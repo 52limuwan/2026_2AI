@@ -47,6 +47,29 @@
                 <span></span>
               </span>
             </div>
+            
+            <!-- Agent Skill 技能识别动画 -->
+            <div v-if="activeSkill && skillStep > 0 && skillStep < 4" class="skill-animation" :class="{ fadeout: skillStep >= 3 }">
+              <!-- 查看技能 -->
+              <div class="skill-step" :class="{ active: skillStep === 1, fadeout: skillStep >= 2 }">
+                <svg class="skill-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="skill-text">查看技能 {{ activeSkill }}</span>
+              </div>
+              
+              <!-- 读取技能 -->
+              <div class="skill-step skill-step-read" :class="{ active: skillStep >= 2, fadeout: skillStep >= 3 }">
+                <svg class="skill-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <line x1="12" y1="18" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <line x1="9" y1="15" x2="15" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="skill-text">读取技能 {{ activeSkill }}</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -224,6 +247,19 @@ const messages = ref([])
 const showWelcomeMessage = ref(true)
 const showHistoryDialog = ref(false)
 const conversations = ref([])
+
+// Agent Skill 技能识别相关状态
+const activeSkill = ref('')
+const skillStep = ref(0)
+let skillAnimationTimer = null
+
+// 技能关键词映射
+const skillKeywords = {
+  '营养师': ['营养', '健康', '饮食', '老年人', '菜品', '搭配', '均衡'],
+  '健身教练': ['运动', '健身', '锻炼', '减肥', '增肌', '训练'],
+  '医疗顾问': ['疾病', '症状', '治疗', '药物', '高血压', '糖尿病', '健康问题'],
+  '食谱专家': ['食谱', '做法', '烹饪', '菜谱', '怎么做']
+}
 
 // 电话通话相关状态
 const showPhoneCall = ref(false)
@@ -532,6 +568,58 @@ const streamText = (text, messageIndex) => {
   })
 }
 
+// 识别用户消息中的技能
+const detectSkill = (message) => {
+  for (const [skill, keywords] of Object.entries(skillKeywords)) {
+    for (const keyword of keywords) {
+      if (message.includes(keyword)) {
+        return skill
+      }
+    }
+  }
+  return ''
+}
+
+// 启动技能动画
+const startSkillAnimation = () => {
+  skillStep.value = 0
+  
+  // 清除之前的定时器
+  if (skillAnimationTimer) {
+    clearTimeout(skillAnimationTimer)
+  }
+  
+  // 步骤1: 延迟3秒后显示"查看技能"
+  setTimeout(() => {
+    skillStep.value = 1
+  }, 3000)
+  
+  // 步骤2: "查看技能"渐变消失，"读取技能"渐变出现
+  setTimeout(() => {
+    skillStep.value = 2
+  }, 4500)
+  
+  // 步骤3: "读取技能"完成，渐变消失
+  setTimeout(() => {
+    skillStep.value = 3
+  }, 5700)
+  
+  // 步骤4: 整个区域消失
+  setTimeout(() => {
+    skillStep.value = 4
+  }, 6300)
+}
+
+// 停止技能动画
+const stopSkillAnimation = () => {
+  activeSkill.value = ''
+  skillStep.value = 0
+  if (skillAnimationTimer) {
+    clearTimeout(skillAnimationTimer)
+    skillAnimationTimer = null
+  }
+}
+
 // 发送消息
 const handleSend = async () => {
   const content = inputText.value.trim()
@@ -549,6 +637,13 @@ const handleSend = async () => {
 
   // 保存用户消息到数据库
   saveMessageToDatabase(userMessage)
+
+  // 识别技能
+  const detectedSkill = detectSkill(content)
+  if (detectedSkill) {
+    activeSkill.value = detectedSkill
+    startSkillAnimation()
+  }
 
   // 显示"思考中"状态
   isThinking.value = true
@@ -586,6 +681,9 @@ const handleSend = async () => {
     
     isThinking.value = false
     
+    // 停止技能动画
+    stopSkillAnimation()
+    
     // 添加 AI 回复
     const aiMessage = {
       role: 'ai',
@@ -607,6 +705,7 @@ const handleSend = async () => {
     console.error('发送消息失败:', err)
     isThinking.value = false
     isLoading.value = false
+    stopSkillAnimation()
     showToast('发送失败，请稍后重试')
   }
 }
@@ -900,6 +999,9 @@ const handleNewChatEvent = () => {
 onUnmounted(() => {
   // 停止流式输出
   stopStreaming()
+  
+  // 停止技能动画
+  stopSkillAnimation()
   
   // 停止录音
   ws.stopRecording()
@@ -1325,6 +1427,112 @@ onMounted(async () => {
     opacity: 1;
     transform: scale(1.2);
   }
+}
+
+/* Agent Skill 技能识别动画样式 */
+.skill-animation {
+  position: relative;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 1px solid var(--border);
+  min-height: 0;
+  max-height: 0;
+  width: 100%;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              margin-top 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              padding-top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: expandSkillArea 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes expandSkillArea {
+  from {
+    opacity: 0;
+    max-height: 0;
+    margin-top: 0;
+    padding-top: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 100px;
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+}
+
+.skill-animation.fadeout {
+  animation: collapseSkillArea 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes collapseSkillArea {
+  from {
+    opacity: 1;
+    max-height: 100px;
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    margin-top: 0;
+    padding-top: 0;
+  }
+}
+
+.skill-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), 
+              transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.skill-step.active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.skill-step.fadeout {
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+}
+
+.skill-step-read {
+  /* 读取技能初始状态从下方进入 */
+  transform: translateY(20px);
+  margin-top: -36px;
+}
+
+.skill-step-read.active {
+  transform: translateY(0);
+}
+
+.skill-step-read.fadeout {
+  transform: translateY(-10px);
+}
+
+.skill-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+  flex-shrink: 0;
+  display: block;
+}
+
+.skill-text {
+  font-size: calc(var(--fs-body) * var(--font-scale) * 0.9);
+  color: var(--text);
+  white-space: nowrap;
 }
 
 /* 输入框包装器 - 固定在底部栏上方，完全透明，无背景图层，悬浮显示 */
