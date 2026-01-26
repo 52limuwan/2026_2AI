@@ -37,7 +37,13 @@
                 :class="{ adding: dish.isAdding }"
               >
                 <div class="dish-image-wrapper" :class="{ adding: dish.isAdding }">
-                  <img :src="dish.image || placeholderImage" @error="onImgError($event)" alt="" />
+                  <img 
+                    :data-src="dish.image || placeholderImage" 
+                    :src="placeholderImage"
+                    @error="onImgError($event)" 
+                    alt="" 
+                    class="lazy-image"
+                  />
                   <div class="dish-badge" :class="{ adding: dish.isAdding }" v-if="dish.nutrition?.calories">
                     {{ dish.nutrition.calories }} kcal
                   </div>
@@ -80,7 +86,13 @@
 
     <div class="card dish-card" v-for="dish in displayList" :key="dish.id">
       <div class="dish-top">
-        <img :src="dish.image || placeholderImage" @error="onImgError($event)" alt="" />
+        <img 
+          :data-src="dish.image || placeholderImage" 
+          :src="placeholderImage"
+          @error="onImgError($event)" 
+          alt="" 
+          class="lazy-image"
+        />
         <div class="dish-info">
           <h3>{{ dish.name }}</h3>
           <p class="muted dish-description" v-if="dish.description">{{ dish.description }}</p>
@@ -152,7 +164,13 @@
         <div class="card-list">
           <div class="cart-item" v-for="item in cart" :key="item.id">
             <div class="cart-info">
-              <img :src="item.image || placeholderImage" @error="onImgError($event)" alt="" />
+              <img 
+                :data-src="item.image || placeholderImage" 
+                :src="placeholderImage"
+                @error="onImgError($event)" 
+                alt="" 
+                class="lazy-image"
+              />
               <div>
                 <strong>{{ item.name }}</strong>
                 <p class="muted" v-if="item.description">{{ item.description }}</p>
@@ -243,6 +261,9 @@ const loadDishes = async () => {
     ])
     recommendations.value = recRes.data.data.recommendations || []
     dishes.value = dishRes.data.data.dishes || []
+    
+    // 数据加载后重新观察图片
+    setTimeout(observeImages, 100)
   } catch (err) {
     console.error('加载菜品失败', err)
   }
@@ -250,12 +271,17 @@ const loadDishes = async () => {
 
 onMounted(() => {
   loadDishes()
+  // 初始化懒加载
+  initLazyLoad()
   // 监听店面切换事件
   window.addEventListener('client-store-changed', loadDishes)
   // 监听用户信息更新事件（例如地址更新）
   window.addEventListener('user-profile-updated', async () => {
     await userStore.refreshProfile()
   })
+  
+  // 延迟观察图片，确保DOM已渲染
+  setTimeout(observeImages, 100)
 })
 
 // 监听购物车显示状态，打开时刷新用户信息以确保地址最新
@@ -266,6 +292,8 @@ watch(showCart, async (isOpen) => {
     if (orderType.value === 'delivery') {
       address.value = savedAddress.value || ''
     }
+    // 购物车打开时观察图片
+    setTimeout(observeImages, 100)
   }
 })
 
@@ -275,6 +303,11 @@ onUnmounted(() => {
   if (recommendTimer) {
     clearTimeout(recommendTimer)
     recommendTimer = null
+  }
+  // 清理图片观察器
+  if (imageObserver) {
+    imageObserver.disconnect()
+    imageObserver = null
   }
 })
 
@@ -373,8 +406,79 @@ const submitOrder = async () => {
   }
 }
 
+// 图片懒加载观察器
+let imageObserver = null
+
+// 初始化懒加载
+const initLazyLoad = () => {
+  if ('IntersectionObserver' in window) {
+    imageObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const img = entry.target
+            const src = img.getAttribute('data-src')
+            
+            // 如果已经加载过，跳过
+            if (img.classList.contains('loaded') || img.classList.contains('error')) {
+              imageObserver.unobserve(img)
+              return
+            }
+            
+            if (src && src !== placeholderImage) {
+              // 创建新图片对象预加载
+              const tempImg = new Image()
+              tempImg.onload = () => {
+                // 使用 requestAnimationFrame 确保平滑过渡
+                requestAnimationFrame(() => {
+                  img.src = src
+                  img.classList.add('loaded')
+                })
+              }
+              tempImg.onerror = () => {
+                img.src = placeholderImage
+                img.classList.add('error')
+              }
+              tempImg.src = src
+            } else {
+              img.src = placeholderImage
+              img.classList.add('loaded')
+            }
+            
+            imageObserver.unobserve(img)
+          }
+        })
+      },
+      {
+        rootMargin: '100px', // 提前100px开始加载，更流畅
+        threshold: 0.01
+      }
+    )
+  }
+}
+
+// 观察所有懒加载图片
+const observeImages = () => {
+  if (!imageObserver) return
+  
+  // 使用 requestIdleCallback 在浏览器空闲时观察图片
+  const observeTask = () => {
+    const lazyImages = document.querySelectorAll('img.lazy-image:not(.loaded):not(.error)')
+    lazyImages.forEach((img) => {
+      imageObserver.observe(img)
+    })
+  }
+  
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(observeTask, { timeout: 200 })
+  } else {
+    setTimeout(observeTask, 0)
+  }
+}
+
 const onImgError = (e) => {
   e.target.src = placeholderImage
+  e.target.classList.add('error')
 }
 
 const runSmartRecommend = async () => {
@@ -419,6 +523,8 @@ const runSmartRecommend = async () => {
       recommendations.forEach((dish, index) => {
         setTimeout(() => {
           recommendedDishes.value.push(dish)
+          // 每添加一个菜品后观察新图片
+          setTimeout(observeImages, 50)
         }, index * 150) // 每个菜品间隔150ms
       })
     }, 300)
@@ -758,8 +864,19 @@ const addRecommendedToCart = (dish) => {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-in-out, filter 0.4s ease-in-out;
   will-change: transform;
+  background: var(--surface-soft);
+}
+
+.recommended-dish-item img.lazy-image {
+  opacity: 0.6;
+  filter: blur(5px);
+}
+
+.recommended-dish-item img.lazy-image.loaded {
+  opacity: 1;
+  filter: blur(0);
 }
 
 .recommended-dish-item:hover img {
@@ -1197,6 +1314,25 @@ const addRecommendedToCart = (dish) => {
   height: 130px;
   object-fit: cover;
   border-radius: 12px;
+  background: var(--surface-soft);
+  transition: opacity 0.3s ease-in-out, transform 0.3s ease;
+}
+
+/* 懒加载图片样式 */
+.lazy-image {
+  opacity: 0.6;
+  filter: blur(5px);
+  transition: opacity 0.4s ease-in-out, filter 0.4s ease-in-out;
+}
+
+.lazy-image.loaded {
+  opacity: 1;
+  filter: blur(0);
+}
+
+.lazy-image.error {
+  opacity: 0.8;
+  filter: blur(0);
 }
 .dish-info h3 {
   margin: 0 0 6px;
