@@ -1,0 +1,82 @@
+{
+  "users": {
+    "fields": {
+      "username": "String",
+      "password": "String",
+      "name": "String",
+      "role": "client|guardian|merchant|gov",
+      "phone": "String",
+      "email": "String"
+    }
+  },
+  "client_profiles": {
+    "fields": {
+      "age": "Number",
+      "gender": "String",
+      "address": "String",
+      "chronic_conditions": "String",
+      "taste_preferences": "String",
+      "restrictions": "String",
+      "elder_mode": "Boolean",
+      "risk_flags": "String"
+    }
+  },
+  "guardian_client_links": {
+    "fields": {
+      "guardian_id": "ObjectId -> users",
+      "client_id": "ObjectId -> users",
+      "relation": "String",
+      "status": "String"
+    }
+  },
+  "dishes": {
+    "fields": {
+      "merchant_id": "ObjectId -> users",
+      "name": "String",
+      "category": "String",
+      "price": "Number",
+      "stock": "Number",
+      "tags": "Array<String>",
+      "nutrition": "Object"
+    }
+  },
+  "orders": {
+    "fields": {
+      "order_number": "String",
+      "client_id": "ObjectId -> users",
+      "guardian_id": "ObjectId -> users",
+      "merchant_id": "ObjectId -> users",
+      "status": "placed|preparing|delivering|delivered|cancelled",
+      "payment_status": "pending|recorded",
+      "address": "String",
+      "contact": "String"
+    }
+  },
+  "order_items": {
+    "fields": {
+      "dish_id": "ObjectId -> dishes",
+      "dish_name": "String",
+      "quantity": "Number",
+      "price": "Number",
+      "nutrition": "Object"
+    }
+  },
+  "nutrition_reports": {
+    "fields": {
+      "client_id": "ObjectId -> users",
+      "type": "week|month",
+      "summary": "Object",
+      "recommendations": "String"
+    }
+  },
+  "notifications": {
+    "fields": {
+      "user_id": "ObjectId -> users",
+      "role": "String",
+      "title": "String",
+      "content": "String",
+      "channel": "String",
+      "status": "String"
+    }
+  }
+}

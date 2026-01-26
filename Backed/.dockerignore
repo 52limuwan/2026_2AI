@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+.env
+.git
+.gitignore
+*.md
+.vscode
+.idea
+*.log
+backend.zip
+backend2.zip
+backend/
+
+
