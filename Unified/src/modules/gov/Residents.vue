@@ -397,11 +397,12 @@ const formatDietPreferences = (prefs) => {
   background: rgba(59, 130, 246, 0.06);
 }
 
+/* 统一间距系统：基于 8px 网格 */
 .user-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
+  padding: 16px;
   cursor: pointer;
   user-select: none;
 }
@@ -409,7 +410,7 @@ const formatDietPreferences = (prefs) => {
 .user-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   flex: 1;
   min-width: 0;
 }
@@ -427,17 +428,18 @@ const formatDietPreferences = (prefs) => {
 }
 
 .user-name {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: var(--fw-semibold);
   color: var(--text);
+  line-height: 1.5;
 }
 
 .risk-tag {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: 4px 8px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: var(--fw-medium);
   line-height: 1.4;
 }
@@ -463,15 +465,16 @@ const formatDietPreferences = (prefs) => {
 }
 
 .user-meta {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  line-height: 1.5;
 }
 
 .user-right {
   display: flex;
   align-items: center;
-  padding-left: 12px;
+  padding-left: 16px;
 }
 
 .expand-btn {
@@ -482,7 +485,7 @@ const formatDietPreferences = (prefs) => {
   justify-content: center;
   color: var(--muted);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .expand-btn:hover {
@@ -501,7 +504,7 @@ const formatDietPreferences = (prefs) => {
 }
 
 .expand-content {
-  padding: 16px 18px;
+  padding: 16px;
 }
 
 .info-section {
@@ -516,7 +519,7 @@ const formatDietPreferences = (prefs) => {
   font-size: 12px;
   font-weight: var(--fw-semibold);
   color: var(--muted);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -530,18 +533,18 @@ const formatDietPreferences = (prefs) => {
 .info-row {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: 16px;
 }
 
 .info-key {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
-  min-width: 70px;
+  min-width: 72px;
   flex-shrink: 0;
 }
 
 .info-val {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text);
   font-weight: var(--fw-medium);
   flex: 1;
@@ -550,7 +553,7 @@ const formatDietPreferences = (prefs) => {
 .guardian-cards {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .guardian-card {
@@ -565,14 +568,14 @@ const formatDietPreferences = (prefs) => {
   padding-top: 16px;
   border-top: 1px solid var(--border);
   display: flex;
-  gap: 10px;
+  gap: 8px;
 }
 
 .action-btn {
   flex: 1;
-  padding: 10px 16px;
+  padding: 12px 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: var(--fw-medium);
   cursor: pointer;
@@ -624,36 +627,40 @@ const formatDietPreferences = (prefs) => {
 
 @media (max-width: 640px) {
   .user-row {
-    padding: 12px 14px;
+    padding: 12px;
   }
   
   .user-left {
-    gap: 10px;
+    gap: 12px;
   }
   
   .user-name {
-    font-size: 14px;
+    font-size: 15px;
   }
   
   .user-meta {
-    font-size: 12px;
+    font-size: 13px;
   }
   
   .expand-content {
-    padding: 14px;
+    padding: 12px;
   }
   
   .info-key {
-    min-width: 60px;
-    font-size: 12px;
+    min-width: 64px;
+    font-size: 13px;
   }
   
   .info-val {
-    font-size: 12px;
+    font-size: 13px;
   }
   
   .expand-actions {
     flex-direction: column;
+  }
+  
+  .action-btn {
+    padding: 10px 16px;
   }
 }
 
@@ -671,19 +678,19 @@ const formatDietPreferences = (prefs) => {
 
 .skeleton-name {
   width: 120px;
-  height: 18px;
-  margin-bottom: 6px;
+  height: 20px;
+  margin-bottom: 8px;
 }
 
 .skeleton-meta {
   width: 200px;
-  height: 14px;
+  height: 16px;
 }
 
 .skeleton-btn {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 @keyframes skeleton-loading {

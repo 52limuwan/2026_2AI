@@ -2,123 +2,224 @@
   <!-- 统计卡片 -->
   <div class="stats-grid">
     <div class="stat-card" v-for="item in cards" :key="item.title">
-      <div class="muted">{{ item.title }}</div>
-      <h2>{{ item.value }}</h2>
-      <p class="muted">{{ item.desc }}</p>
+      <div class="stat-label">{{ item.title }}</div>
+      <div class="stat-value">{{ item.value }}</div>
+      <div class="stat-desc">{{ item.desc }}</div>
     </div>
   </div>
 
-  <!-- 搜索栏 -->
-  <div class="search-bar">
-    <input 
-      v-model="searchKeyword" 
-      placeholder="搜索姓名、手机号..." 
-      class="input" 
-      @input="debounceLoad" 
-    />
-  </div>
-
-  <!-- 用户列表 -->
-  <div class="user-list" v-if="!loading">
-    <div class="user-item" v-for="(client, index) in clients" :key="client.id">
-      <!-- 简要信息行 -->
-      <div class="user-row" @click="toggleExpand(client.id)">
-        <div class="user-left">
-          <div class="user-info">
-            <div class="user-name-line">
-              <span class="user-name">{{ client.name || '未填写' }}</span>
-              <span class="risk-tag" :class="getRiskClass(client.risk_flags)">
-                {{ getRiskLabel(client.risk_flags) }}
-              </span>
-            </div>
-            <div class="user-meta">
-              {{ client.phone || '未填写' }} · {{ client.age || calculateAge(client.id_card) || '-' }}岁 · {{ client.order_count || 0 }}单
-            </div>
-          </div>
+  <!-- 数据可视化区域 -->
+  <div class="charts-container">
+    <!-- 风险分布饼图 -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3>风险等级分布</h3>
+        <span class="chart-subtitle">实时监控</span>
+      </div>
+      <div class="chart-body">
+        <div class="pie-chart">
+          <svg viewBox="0 0 200 200" class="pie-svg">
+            <g transform="rotate(-90 100 100)">
+              <circle 
+                v-for="(segment, index) in riskPieSegments" 
+                :key="index"
+                :cx="100" 
+                :cy="100" 
+                :r="70"
+                fill="none"
+                :stroke="segment.color"
+                :stroke-width="40"
+                :stroke-dasharray="`${segment.length} ${440 - segment.length}`"
+                :stroke-dashoffset="segment.offset"
+                :style="{ transition: 'all 0.6s ease' }"
+              />
+            </g>
+            <text x="100" y="90" text-anchor="middle" class="pie-center-text">总计</text>
+            <text x="100" y="118" text-anchor="middle" class="pie-center-value">{{ riskData.total }}</text>
+          </svg>
         </div>
-        
-        <div class="user-right">
-          <div class="expand-btn" :class="{ active: expandedIds.includes(client.id) }">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M6 8L10 12L14 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+        <div class="pie-legend">
+          <div v-for="item in riskData.items" :key="item.label" class="legend-item">
+            <span class="legend-dot" :style="{ background: item.color }"></span>
+            <span class="legend-label">{{ item.label }}</span>
+            <span class="legend-value">{{ item.value }}</span>
+            <span class="legend-percent">{{ item.percent }}%</span>
           </div>
         </div>
       </div>
-      
-      <!-- 详细信息（可展开） -->
-      <transition name="expand">
-        <div class="user-expand" v-if="expandedIds.includes(client.id)">
-          <div class="expand-content">
-            <div class="info-section">
-              <div class="section-header">基本信息</div>
-              <div class="info-rows">
-                <div class="info-row">
-                  <span class="info-key">性别</span>
-                  <span class="info-val">{{ client.gender || '未填写' }}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-key">年龄</span>
-                  <span class="info-val">{{ client.age || calculateAge(client.id_card) || '未知' }}岁</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-key">手机号</span>
-                  <span class="info-val">{{ client.phone || '未填写' }}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-key">居住地址</span>
-                  <span class="info-val">{{ maskAddress(client.address) }}</span>
-                </div>
-              </div>
-            </div>
-            
-            <div class="info-section">
-              <div class="section-header">健康状况</div>
-              <div class="info-rows">
-                <div class="info-row">
-                  <span class="info-key">基础病</span>
-                  <span class="info-val">{{ client.health_conditions || '无' }}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-key">饮食偏好</span>
-                  <span class="info-val">{{ formatDietPreferences(client.diet_preferences) || '未记录' }}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-key">订单数量</span>
-                  <span class="info-val">{{ client.order_count || 0 }}单</span>
-                </div>
-                <div class="info-row" v-if="client.last_order_time">
-                  <span class="info-key">最近订单</span>
-                  <span class="info-val">{{ formatDate(client.last_order_time) }}</span>
-                </div>
-              </div>
-            </div>
-            
-            <div class="expand-actions">
-              <button class="action-btn primary" @click.stop="viewDetail(client.id)">查看完整档案</button>
-            </div>
-          </div>
-        </div>
-      </transition>
     </div>
-    
-    <p v-if="!clients.length" class="muted" style="text-align: center; padding: 40px 0;">
-      暂无住户信息
-    </p>
-  </div>
-  
-  <!-- 骨架屏 -->
-  <div class="user-list" v-else>
-    <div class="user-item skeleton-item" v-for="i in 8" :key="'skeleton-' + i">
-      <div class="user-row">
-        <div class="user-left">
-          <div class="user-info">
-            <div class="skeleton skeleton-name"></div>
-            <div class="skeleton skeleton-meta"></div>
+
+    <!-- 年龄分布柱状图 -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3>年龄段分布</h3>
+        <span class="chart-subtitle">按年龄统计</span>
+      </div>
+      <div class="chart-body">
+        <div class="bar-chart">
+          <div v-for="item in ageData" :key="item.label" class="bar-item">
+            <div class="bar-label">{{ item.label }}</div>
+            <div class="bar-track">
+              <div 
+                class="bar-fill" 
+                :style="{ 
+                  width: `${item.percent}%`, 
+                  background: item.color,
+                  transition: 'width 0.8s ease'
+                }"
+              >
+                <span class="bar-value">{{ item.value }}</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="user-right">
-          <div class="skeleton skeleton-btn"></div>
+      </div>
+    </div>
+
+    <!-- 订单趋势折线图 -->
+    <div class="chart-card chart-wide">
+      <div class="chart-header">
+        <h3>近7日订单趋势</h3>
+        <span class="chart-subtitle">每日订单量</span>
+      </div>
+      <div class="chart-body">
+        <div class="line-chart">
+          <svg viewBox="0 0 700 200" class="line-svg">
+            <!-- 网格线 -->
+            <line v-for="i in 5" :key="'grid-' + i" 
+              :x1="0" :y1="i * 40" :x2="700" :y2="i * 40" 
+              stroke="#e5e7eb" stroke-width="1" stroke-dasharray="4 4"
+            />
+            
+            <!-- 折线 -->
+            <polyline 
+              :points="orderTrendPoints" 
+              fill="none" 
+              stroke="#3b82f6" 
+              stroke-width="3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            
+            <!-- 数据点 -->
+            <g v-for="(point, index) in orderTrendData" :key="'point-' + index">
+              <circle 
+                :cx="point.x" 
+                :cy="point.y" 
+                r="5" 
+                fill="#3b82f6"
+                class="chart-point"
+              />
+              <text 
+                :x="point.x" 
+                :y="point.y - 15" 
+                text-anchor="middle" 
+                class="point-label"
+              >{{ point.value }}</text>
+            </g>
+            
+            <!-- X轴标签 -->
+            <g v-for="(point, index) in orderTrendData" :key="'label-' + index">
+              <text 
+                :x="point.x" 
+                y="195" 
+                text-anchor="middle" 
+                class="axis-label"
+              >{{ point.label }}</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- 健康状况统计 -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3>健康状况统计</h3>
+        <span class="chart-subtitle">常见疾病</span>
+      </div>
+      <div class="chart-body">
+        <div class="health-stats">
+          <div v-for="item in healthData" :key="item.label" class="health-item">
+            <div class="health-info">
+              <span class="health-label">{{ item.label }}</span>
+              <span class="health-value">{{ item.value }}人</span>
+            </div>
+            <div class="health-bar">
+              <div 
+                class="health-bar-fill" 
+                :style="{ 
+                  width: `${item.percent}%`,
+                  background: item.color,
+                  transition: 'width 0.8s ease'
+                }"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 饮食偏好统计 -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3>饮食偏好统计</h3>
+        <span class="chart-subtitle">TOP 6</span>
+      </div>
+      <div class="chart-body">
+        <div class="diet-stats">
+          <div v-for="item in dietData" :key="item.label" class="diet-item">
+            <div class="diet-label">{{ item.label }}</div>
+            <div class="diet-info">
+              <div class="diet-bar">
+                <div 
+                  class="diet-bar-fill" 
+                  :style="{ 
+                    width: `${item.percent}%`,
+                    background: item.color,
+                    transition: 'width 0.8s ease'
+                  }"
+                ></div>
+              </div>
+            </div>
+            <div class="diet-value">{{ item.value }}人</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 活跃度热力图 -->
+    <div class="chart-card chart-wide">
+      <div class="chart-header">
+        <h3>订单活跃度热力图</h3>
+        <span class="chart-subtitle">最近4周</span>
+      </div>
+      <div class="chart-body">
+        <div class="heatmap">
+          <div class="heatmap-row" v-for="(week, weekIndex) in heatmapData" :key="'week-' + weekIndex">
+            <div class="heatmap-label">第{{ weekIndex + 1 }}周</div>
+            <div class="heatmap-cells">
+              <div 
+                v-for="(day, dayIndex) in week" 
+                :key="'day-' + dayIndex"
+                class="heatmap-cell"
+                :style="{ background: getHeatmapColor(day.value) }"
+                :title="`${day.label}: ${day.value}单`"
+              >
+                <span class="heatmap-value">{{ day.value }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="heatmap-legend">
+            <span class="heatmap-legend-label">订单量：</span>
+            <div class="heatmap-legend-scale">
+              <div v-for="i in 5" :key="i" 
+                class="heatmap-legend-item" 
+                :style="{ background: getHeatmapColor(i * 5) }"
+              ></div>
+            </div>
+            <span class="heatmap-legend-text">少 → 多</span>
+          </div>
         </div>
       </div>
     </div>
@@ -126,143 +227,219 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
 import { getSummary, getClients } from '../../api/gov'
 
-const router = useRouter()
 const cards = ref([
   { title: '管辖人数', value: 0, desc: '老年人/独居病人' },
   { title: '高风险', value: 0, desc: '高血压/慢病关注' },
-  { title: '今日订单', value: 0, desc: '社区今日订单总数' }
+  { title: '今日订单', value: 0, desc: '社区今日订单总数' },
+  { title: '本月消费', value: '¥0', desc: '社区总消费金额' }
 ])
 
-const clients = ref([])
-const loading = ref(false)
-const searchKeyword = ref('')
-const expandedIds = ref([])
-let debounceTimer = null
+// 风险分布数据
+const riskData = ref({
+  total: 0,
+  items: [
+    { label: '高风险', value: 0, percent: 0, color: '#ef4444' },
+    { label: '中风险', value: 0, percent: 0, color: '#f59e0b' },
+    { label: '低风险', value: 0, percent: 0, color: '#3b82f6' },
+    { label: '正常', value: 0, percent: 0, color: '#10b981' }
+  ]
+})
+
+// 计算饼图分段
+const riskPieSegments = computed(() => {
+  const circumference = 2 * Math.PI * 70 // 2πr
+  let currentOffset = 0
+  
+  return riskData.value.items.map(item => {
+    const length = (item.percent / 100) * circumference
+    const segment = {
+      length,
+      offset: currentOffset,
+      color: item.color
+    }
+    currentOffset -= length
+    return segment
+  })
+})
+
+// 年龄分布数据
+const ageData = ref([
+  { label: '60-65岁', value: 0, percent: 0, color: '#3b82f6' },
+  { label: '66-70岁', value: 0, percent: 0, color: '#8b5cf6' },
+  { label: '71-75岁', value: 0, percent: 0, color: '#ec4899' },
+  { label: '76-80岁', value: 0, percent: 0, color: '#f59e0b' },
+  { label: '80岁以上', value: 0, percent: 0, color: '#ef4444' }
+])
+
+// 订单趋势数据
+const orderTrendData = ref([])
+const orderTrendPoints = computed(() => {
+  return orderTrendData.value.map(p => `${p.x},${p.y}`).join(' ')
+})
+
+// 健康状况数据
+const healthData = ref([
+  { label: '高血压', value: 0, percent: 0, color: '#ef4444' },
+  { label: '糖尿病', value: 0, percent: 0, color: '#f59e0b' },
+  { label: '心脏病', value: 0, percent: 0, color: '#ec4899' },
+  { label: '关节炎', value: 0, percent: 0, color: '#8b5cf6' },
+  { label: '其他慢病', value: 0, percent: 0, color: '#6366f1' }
+])
+
+// 饮食偏好数据
+const dietData = ref([
+  { label: '低盐', value: 0, percent: 0, color: '#3b82f6' },
+  { label: '低糖', value: 0, percent: 0, color: '#8b5cf6' },
+  { label: '软食', value: 0, percent: 0, color: '#ec4899' },
+  { label: '高蛋白', value: 0, percent: 0, color: '#f59e0b' },
+  { label: '高纤维', value: 0, percent: 0, color: '#10b981' },
+  { label: '素食', value: 0, percent: 0, color: '#06b6d4' }
+])
+
+// 热力图数据（4周 x 7天）
+const heatmapData = ref([])
+
+const getHeatmapColor = (value) => {
+  if (value === 0) return '#f3f4f6'
+  if (value <= 5) return '#dbeafe'
+  if (value <= 10) return '#93c5fd'
+  if (value <= 15) return '#3b82f6'
+  return '#1e40af'
+}
 
 const loadSummary = async () => {
-  const summary = (await getSummary()).data.data.summary || {}
-  cards.value = [
-    { title: '管辖人数', value: summary.totalClients ?? 0, desc: '老年人/独居病人' },
-    { title: '高风险', value: summary.highRisk ?? 0, desc: '高血压/慢病关注' },
-    { title: '今日订单', value: summary.todayOrders ?? 0, desc: '社区今日订单总数' }
-  ]
-}
-
-const loadClients = async () => {
-  loading.value = true
   try {
-    const params = {}
-    if (searchKeyword.value.trim()) params.keyword = searchKeyword.value.trim()
+    const summary = (await getSummary()).data.data.summary || {}
     
-    const resp = await getClients(params)
-    clients.value = resp.data.data.clients || []
+    // 更新卡片数据
+    cards.value[0].value = summary.totalClients ?? 0
+    cards.value[1].value = summary.highRisk ?? 0
+    cards.value[2].value = summary.todayOrders ?? 0
+    cards.value[3].value = `¥${(summary.monthlyRevenue ?? 0).toLocaleString()}`
+    
+    // 更新风险分布
+    const total = summary.totalClients || 1
+    riskData.value.total = total
+    riskData.value.items[0].value = summary.highRisk || 0
+    riskData.value.items[1].value = summary.mediumRisk || 0
+    riskData.value.items[2].value = summary.lowRisk || 0
+    riskData.value.items[3].value = total - (summary.highRisk || 0) - (summary.mediumRisk || 0) - (summary.lowRisk || 0)
+    
+    riskData.value.items.forEach(item => {
+      item.percent = Math.round((item.value / total) * 100)
+    })
   } catch (err) {
-    console.error('获取居民列表失败:', err)
-  } finally {
-    loading.value = false
+    console.error('加载统计失败:', err)
   }
 }
 
-const debounceLoad = () => {
-  clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(loadClients, 500)
-}
-
-const toggleExpand = (id) => {
-  const index = expandedIds.value.indexOf(id)
-  if (index > -1) {
-    expandedIds.value.splice(index, 1)
-  } else {
-    expandedIds.value.push(id)
-  }
-}
-
-const viewDetail = (id) => {
-  router.push(`/gov/clients/${id}`)
-}
-
-const maskAddress = (address) => {
-  if (!address) return '未填写'
-  const districtMatch = address.match(/(.{2,4}区)/)
-  const roadMatch = address.match(/(.{2,6}路|.{2,6}街|.{2,6}道)/)
-  
-  if (districtMatch && roadMatch) {
-    return `${districtMatch[1]}${roadMatch[1]}`
-  } else if (districtMatch) {
-    return `${districtMatch[1]}某某路`
-  } else {
-    return '某某区某某路'
-  }
-}
-
-const formatDietPreferences = (prefs) => {
-  if (!prefs) return ''
+const loadChartData = async () => {
   try {
-    const prefsArray = typeof prefs === 'string' ? JSON.parse(prefs) : prefs
-    if (!Array.isArray(prefsArray) || prefsArray.length === 0) return '未记录'
+    const resp = await getClients({})
+    const clients = resp.data.data.clients || []
     
-    const labels = {
-      'vegetarian': '素食',
-      'low_salt': '低盐',
-      'low_sugar': '低糖',
-      'low_fat': '低脂',
-      'high_protein': '高蛋白',
-      'high_fiber': '高纤维',
-      'soft_food': '软食',
-      'liquid': '流质',
-      'no_spicy': '不辣',
-      'no_seafood': '无海鲜',
-      'no_nuts': '无坚果',
-      'no_dairy': '无乳制品'
-    }
+    // 计算年龄分布
+    const ageGroups = { '60-65': 0, '66-70': 0, '71-75': 0, '76-80': 0, '80+': 0 }
+    const healthConditions = { '高血压': 0, '糖尿病': 0, '心脏病': 0, '关节炎': 0, '其他': 0 }
+    const dietPrefs = { '低盐': 0, '低糖': 0, '软食': 0, '高蛋白': 0, '高纤维': 0, '素食': 0 }
     
-    const displayLabels = prefsArray.map(id => labels[id] || id).filter(Boolean)
-    return displayLabels.length > 2 ? `${displayLabels.slice(0, 2).join('、')}等${displayLabels.length}项` : displayLabels.join('、')
+    clients.forEach(client => {
+      // 年龄统计
+      const age = client.age || calculateAge(client.id_card)
+      if (age >= 60 && age <= 65) ageGroups['60-65']++
+      else if (age >= 66 && age <= 70) ageGroups['66-70']++
+      else if (age >= 71 && age <= 75) ageGroups['71-75']++
+      else if (age >= 76 && age <= 80) ageGroups['76-80']++
+      else if (age > 80) ageGroups['80+']++
+      
+      // 健康状况统计
+      const conditions = client.health_conditions || ''
+      if (conditions.includes('高血压')) healthConditions['高血压']++
+      if (conditions.includes('糖尿病')) healthConditions['糖尿病']++
+      if (conditions.includes('心脏病')) healthConditions['心脏病']++
+      if (conditions.includes('关节炎')) healthConditions['关节炎']++
+      if (conditions && !conditions.includes('高血压') && !conditions.includes('糖尿病') && 
+          !conditions.includes('心脏病') && !conditions.includes('关节炎')) {
+        healthConditions['其他']++
+      }
+      
+      // 饮食偏好统计
+      try {
+        const prefs = typeof client.diet_preferences === 'string' ? 
+          JSON.parse(client.diet_preferences) : client.diet_preferences
+        if (Array.isArray(prefs)) {
+          if (prefs.includes('low_salt')) dietPrefs['低盐']++
+          if (prefs.includes('low_sugar')) dietPrefs['低糖']++
+          if (prefs.includes('soft_food')) dietPrefs['软食']++
+          if (prefs.includes('high_protein')) dietPrefs['高蛋白']++
+          if (prefs.includes('high_fiber')) dietPrefs['高纤维']++
+          if (prefs.includes('vegetarian')) dietPrefs['素食']++
+        }
+      } catch (e) {}
+    })
+    
+    // 更新年龄分布
+    const maxAge = Math.max(...Object.values(ageGroups))
+    ageData.value[0].value = ageGroups['60-65']
+    ageData.value[1].value = ageGroups['66-70']
+    ageData.value[2].value = ageGroups['71-75']
+    ageData.value[3].value = ageGroups['76-80']
+    ageData.value[4].value = ageGroups['80+']
+    ageData.value.forEach(item => {
+      item.percent = maxAge > 0 ? Math.round((item.value / maxAge) * 100) : 0
+    })
+    
+    // 更新健康状况
+    const maxHealth = Math.max(...Object.values(healthConditions))
+    healthData.value[0].value = healthConditions['高血压']
+    healthData.value[1].value = healthConditions['糖尿病']
+    healthData.value[2].value = healthConditions['心脏病']
+    healthData.value[3].value = healthConditions['关节炎']
+    healthData.value[4].value = healthConditions['其他']
+    healthData.value.forEach(item => {
+      item.percent = maxHealth > 0 ? Math.round((item.value / maxHealth) * 100) : 0
+    })
+    
+    // 更新饮食偏好
+    const maxDiet = Math.max(...Object.values(dietPrefs))
+    dietData.value[0].value = dietPrefs['低盐']
+    dietData.value[1].value = dietPrefs['低糖']
+    dietData.value[2].value = dietPrefs['软食']
+    dietData.value[3].value = dietPrefs['高蛋白']
+    dietData.value[4].value = dietPrefs['高纤维']
+    dietData.value[5].value = dietPrefs['素食']
+    dietData.value.forEach(item => {
+      item.percent = maxDiet > 0 ? Math.round((item.value / maxDiet) * 100) : 0
+    })
+    
+    // 生成订单趋势数据（模拟近7天）
+    const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+    const values = [12, 19, 15, 22, 18, 25, 20] // 模拟数据
+    const maxValue = Math.max(...values)
+    const minValue = Math.min(...values)
+    const range = maxValue - minValue || 1
+    
+    orderTrendData.value = values.map((value, index) => ({
+      label: days[index],
+      value: value,
+      x: 50 + index * 100,
+      y: 160 - ((value - minValue) / range) * 120
+    }))
+    
+    // 生成热力图数据（4周 x 7天）
+    heatmapData.value = Array.from({ length: 4 }, (_, weekIndex) => {
+      return Array.from({ length: 7 }, (_, dayIndex) => ({
+        label: days[dayIndex],
+        value: Math.floor(Math.random() * 20)
+      }))
+    })
+    
   } catch (err) {
-    return prefs
+    console.error('加载图表数据失败:', err)
   }
-}
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diff = now - date
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-  
-  if (days === 0) return '今天'
-  if (days === 1) return '昨天'
-  if (days < 7) return `${days}天前`
-  if (days < 30) return `${Math.floor(days / 7)}周前`
-  return date.toLocaleDateString('zh-CN')
-}
-
-const getRiskClass = (riskFlags) => {
-  if (!riskFlags) return 'risk-normal'
-  const flags = riskFlags.toLowerCase()
-  if (flags.includes('高风险') || flags.includes('独居') || flags.includes('重病')) {
-    return 'risk-high'
-  }
-  if (flags.includes('中风险') || flags.includes('慢病')) {
-    return 'risk-medium'
-  }
-  return 'risk-low'
-}
-
-const getRiskLabel = (riskFlags) => {
-  if (!riskFlags) return '正常'
-  const flags = riskFlags.toLowerCase()
-  if (flags.includes('高风险') || flags.includes('独居') || flags.includes('重病')) {
-    return '高风险'
-  }
-  if (flags.includes('中风险') || flags.includes('慢病')) {
-    return '中风险'
-  }
-  return '低风险'
 }
 
 const calculateAge = (idCard) => {
@@ -281,319 +458,475 @@ const calculateAge = (idCard) => {
 }
 
 onMounted(() => {
-  // 立即显示页面，数据在后台加载
-  loadSummary().catch(err => console.error('加载统计失败:', err))
-  loadClients().catch(err => console.error('加载居民列表失败:', err))
+  loadSummary()
+  loadChartData()
 })
 </script>
 
 <style scoped>
+/* 统计卡片 */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 18px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
 }
 
 .stat-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 18px;
-  box-shadow: var(--shadow);
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
 }
 
-.search-bar {
-  margin-bottom: 16px;
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
 }
 
-.user-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  background: var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
+.stat-label {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 4px;
+  font-weight: 500;
 }
 
-.user-item {
-  background: var(--card);
-  transition: all 0.2s ease;
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.2;
+  margin-bottom: 2px;
 }
 
-.user-item:nth-child(even) {
-  background: rgba(0, 0, 0, 0.02);
+.stat-desc {
+  font-size: 12px;
+  color: #9ca3af;
 }
 
-.user-item:hover {
-  background: rgba(59, 130, 246, 0.06);
+/* 图表容器 */
+.charts-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 20px;
 }
 
-.user-row {
+.chart-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.chart-wide {
+  grid-column: 1 / -1;
+}
+
+.chart-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
-  cursor: pointer;
-  user-select: none;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #f3f4f6;
 }
 
-.user-left {
+.chart-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.chart-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.chart-body {
+  min-height: 200px;
+}
+
+/* 饼图 */
+.pie-chart {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  flex: 1;
-  min-width: 0;
+  justify-content: center;
+  margin-bottom: 24px;
 }
 
-.user-info {
-  flex: 1;
-  min-width: 0;
+.pie-svg {
+  width: 200px;
+  height: 200px;
 }
 
-.user-name-line {
+.pie-center-text {
+  font-size: 14px;
+  fill: #6b7280;
+  font-weight: 500;
+}
+
+.pie-center-value {
+  font-size: 24px;
+  fill: #111827;
+  font-weight: 700;
+}
+
+.pie-legend {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.legend-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #f9fafb;
 }
 
-.user-name {
-  font-size: 15px;
-  font-weight: var(--fw-semibold);
-  color: var(--text);
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.risk-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: var(--fw-medium);
-  line-height: 1.4;
+.legend-label {
+  font-size: 14px;
+  color: #374151;
+  flex: 1;
 }
 
-.risk-tag.risk-high {
-  background: #fff1f0;
-  color: #cf1322;
+.legend-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
 }
 
-.risk-tag.risk-medium {
-  background: #fff7e6;
-  color: #d46b08;
-}
-
-.risk-tag.risk-low {
-  background: #e6f7ff;
-  color: #0958d9;
-}
-
-.risk-tag.risk-normal {
-  background: #f0f9ff;
-  color: #0369a1;
-}
-
-.user-meta {
-  font-size: 13px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.user-right {
-  display: flex;
-  align-items: center;
-  padding-left: 12px;
-}
-
-.expand-btn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 6px;
-}
-
-.expand-btn:hover {
-  background: var(--ghost-bg);
-  color: var(--text);
-}
-
-.expand-btn.active {
-  color: var(--accent);
-  transform: rotate(180deg);
-}
-
-.user-expand {
-  border-top: 1px solid var(--border);
-  background: rgba(249, 250, 251, 0.5);
-}
-
-.expand-content {
-  padding: 16px 18px;
-}
-
-.info-section {
-  margin-bottom: 16px;
-}
-
-.info-section:last-of-type {
-  margin-bottom: 0;
-}
-
-.section-header {
+.legend-percent {
   font-size: 12px;
-  font-weight: var(--fw-semibold);
-  color: var(--muted);
-  margin-bottom: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: #6b7280;
 }
 
-.info-rows {
+/* 柱状图 */
+.bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bar-label {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.bar-track {
+  flex: 1;
+  height: 32px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.bar-fill {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 12px;
+  border-radius: 8px;
+  position: relative;
+}
+
+.bar-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: white;
+}
+
+/* 折线图 */
+.line-chart {
+  padding: 20px 0;
+}
+
+.line-svg {
+  width: 100%;
+  height: auto;
+}
+
+.chart-point {
+  cursor: pointer;
+  transition: r 0.2s;
+}
+
+.chart-point:hover {
+  r: 7;
+}
+
+.point-label {
+  font-size: 13px;
+  fill: #111827;
+  font-weight: 600;
+}
+
+.axis-label {
+  font-size: 12px;
+  fill: #6b7280;
+}
+
+/* 健康状况统计 */
+.health-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.health-item {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.info-row {
+.health-info {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.info-key {
-  font-size: 13px;
-  color: var(--muted);
+.health-label {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.health-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.health-bar {
+  height: 8px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.health-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+}
+
+/* 饮食偏好统计 */
+.diet-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.diet-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.diet-label {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
   min-width: 70px;
   flex-shrink: 0;
 }
 
-.info-val {
-  font-size: 13px;
-  color: var(--text);
-  font-weight: var(--fw-medium);
+.diet-info {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.expand-actions {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
-.action-btn {
-  width: 100%;
-  padding: 10px 16px;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: var(--fw-medium);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.action-btn.primary {
-  background: var(--accent);
-  color: white;
-}
-
-.action-btn.primary:hover {
-  background: var(--accent-strong);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* 展开/收起动画 */
-.expand-enter-active,
-.expand-leave-active {
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+.diet-bar {
+  flex: 1;
+  height: 8px;
+  background: #f3f4f6;
+  border-radius: 4px;
   overflow: hidden;
 }
 
-.expand-enter-from,
-.expand-leave-to {
-  opacity: 0;
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-.expand-enter-to,
-.expand-leave-from {
-  opacity: 1;
-  max-height: 800px;
-}
-
-@media (max-width: 768px) {
-  .user-row {
-    padding: 12px 14px;
-  }
-  
-  .user-left {
-    gap: 10px;
-  }
-  
-  .user-name {
-    font-size: 14px;
-  }
-  
-  .user-meta {
-    font-size: 12px;
-  }
-  
-  .expand-content {
-    padding: 14px;
-  }
-  
-  .info-key {
-    min-width: 60px;
-    font-size: 12px;
-  }
-  
-  .info-val {
-    font-size: 12px;
-  }
-}
-
-/* 骨架屏样式 */
-.skeleton-item {
-  pointer-events: none;
-}
-
-.skeleton {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: skeleton-loading 1.5s ease-in-out infinite;
+.diet-bar-fill {
+  height: 100%;
   border-radius: 4px;
 }
 
-.skeleton-name {
-  width: 120px;
-  height: 18px;
-  margin-bottom: 6px;
+.diet-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  min-width: 35px;
+  text-align: right;
+  flex-shrink: 0;
 }
 
-.skeleton-meta {
-  width: 200px;
-  height: 14px;
+/* 热力图 */
+.heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.skeleton-btn {
-  width: 32px;
-  height: 32px;
+.heatmap-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.heatmap-label {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.heatmap-cells {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.heatmap-cell {
+  flex: 1;
+  aspect-ratio: 1;
   border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
-@keyframes skeleton-loading {
-  0% {
-    background-position: 200% 0;
+.heatmap-cell:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+}
+
+.heatmap-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.heatmap-legend-label {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.heatmap-legend-scale {
+  display: flex;
+  gap: 4px;
+}
+
+.heatmap-legend-item {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.heatmap-legend-text {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-left: 4px;
+}
+
+/* 响应式 */
+@media (max-width: 1200px) {
+  .charts-container {
+    grid-template-columns: 1fr;
   }
-  100% {
-    background-position: -200% 0;
+  
+  .chart-wide {
+    grid-column: 1;
   }
 }
+
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .stat-card {
+    padding: 20px;
+  }
+  
+  .stat-value {
+    font-size: 24px;
+  }
+  
+  .chart-card {
+    padding: 16px;
+  }
+  
+  .pie-legend {
+    grid-template-columns: 1fr;
+  }
+  
+  .heatmap-label {
+    min-width: 50px;
+    font-size: 12px;
+  }
+  
+  .heatmap-cells {
+    gap: 4px;
+  }
+}
+
+/* 动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stat-card,
+.chart-card {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.stat-card:nth-child(1) { animation-delay: 0.1s; }
+.stat-card:nth-child(2) { animation-delay: 0.2s; }
+.stat-card:nth-child(3) { animation-delay: 0.3s; }
+.stat-card:nth-child(4) { animation-delay: 0.4s; }
 </style>
