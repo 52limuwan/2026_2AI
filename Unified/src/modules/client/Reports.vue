@@ -322,14 +322,26 @@ const getWeeklyRadarOption = () => {
     },
     radar: {
       indicator: [
-        { name: '热量', max: 15000 },
-        { name: '蛋白质', max: 500 },
-        { name: '脂肪', max: 500 },
-        { name: '碳水', max: 2000 },
-        { name: '膳食纤维', max: 200 },
-        { name: '钙', max: 7000 }
+        { name: '热量', min: 0, max: 16000, scale: false },
+        { name: '蛋白质', min: 0, max: 600, scale: false },
+        { name: '脂肪', min: 0, max: 600, scale: false },
+        { name: '碳水', min: 0, max: 2400, scale: false },
+        { name: '膳食纤维', min: 0, max: 240, scale: false },
+        { name: '钙', min: 0, max: 8000, scale: false }
       ],
-      radius: '60%'
+      radius: '60%',
+      splitNumber: 5,
+      scale: false,
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(0, 0, 0, 0.1)'
+        }
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(0, 0, 0, 0.1)'
+        }
+      }
     },
     series: [{
       type: 'radar',
@@ -409,14 +421,26 @@ const getMonthlyRadarOption = () => {
     },
     radar: {
       indicator: [
-        { name: '热量', max: 60000 },
-        { name: '蛋白质', max: 2000 },
-        { name: '脂肪', max: 2000 },
-        { name: '碳水', max: 8000 },
-        { name: '膳食纤维', max: 800 },
-        { name: '钙', max: 30000 }
+        { name: '热量', min: 0, max: 64000, scale: false },
+        { name: '蛋白质', min: 0, max: 2400, scale: false },
+        { name: '脂肪', min: 0, max: 2400, scale: false },
+        { name: '碳水', min: 0, max: 9600, scale: false },
+        { name: '膳食纤维', min: 0, max: 960, scale: false },
+        { name: '钙', min: 0, max: 32000, scale: false }
       ],
-      radius: '60%'
+      radius: '60%',
+      splitNumber: 5,
+      scale: false,
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(0, 0, 0, 0.1)'
+        }
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(0, 0, 0, 0.1)'
+        }
+      }
     },
     series: [{
       type: 'radar',

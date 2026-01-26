@@ -6,6 +6,16 @@ import App from './App.vue'
 import router from './router'
 import './style.css'
 
+// 静默 ECharts 的 alignTicks 警告
+const originalConsoleWarn = console.warn
+console.warn = function(...args) {
+  const message = args[0]
+  if (typeof message === 'string' && message.includes('alignTicks')) {
+    return // 忽略 alignTicks 相关警告
+  }
+  originalConsoleWarn.apply(console, args)
+}
+
 const app = createApp(App)
 const pinia = createPinia()
 
