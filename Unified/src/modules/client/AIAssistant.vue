@@ -47,31 +47,23 @@
                 <span></span>
               </span>
             </div>
-            
-            <!-- Agent Skill 技能识别动画 -->
-            <div v-if="activeSkill && skillStep > 0 && skillStep < 4" class="skill-animation" :class="{ fadeout: skillStep >= 3 }">
-              <!-- 查看技能 -->
-              <div class="skill-step" :class="{ active: skillStep === 1, fadeout: skillStep >= 2 }">
-                <svg class="skill-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          </div>
+        </div>
+        
+        <!-- Agent Skill 技能识别动画 - 完全重写 -->
+        <transition name="skill-blur">
+          <div v-if="showSkillIndicator && isThinking" class="skill-indicator-container">
+            <transition name="skill-text-blur" mode="out-in">
+              <div class="skill-indicator" :key="currentSkillText">
+                <svg class="skill-book-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                <span class="skill-text">查看技能 {{ activeSkill }}</span>
+                <span class="skill-indicator-text">{{ currentSkillText }}</span>
               </div>
-              
-              <!-- 读取技能 -->
-              <div class="skill-step skill-step-read" :class="{ active: skillStep >= 2, fadeout: skillStep >= 3 }">
-                <svg class="skill-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <line x1="12" y1="18" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <line x1="9" y1="15" x2="15" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span class="skill-text">读取技能 {{ activeSkill }}</span>
-              </div>
-            </div>
+            </transition>
           </div>
-        </div>
+        </transition>
 
         <!-- AI 正在输入中（备用，流式输出时不显示） -->
         <div v-if="isLoading && !isStreaming && !isThinking" class="message-item message-ai">
@@ -250,7 +242,8 @@ const conversations = ref([])
 
 // Agent Skill 技能识别相关状态
 const activeSkill = ref('')
-const skillStep = ref(0)
+const currentSkillText = ref('')
+const showSkillIndicator = ref(false)
 let skillAnimationTimer = null
 
 // 技能关键词映射
@@ -582,38 +575,41 @@ const detectSkill = (message) => {
 
 // 启动技能动画
 const startSkillAnimation = () => {
-  skillStep.value = 0
+  currentSkillText.value = ''
+  showSkillIndicator.value = false
   
   // 清除之前的定时器
   if (skillAnimationTimer) {
     clearTimeout(skillAnimationTimer)
   }
   
-  // 步骤1: 延迟3秒后显示"查看技能"
+  // 步骤1: 延迟3秒后模糊出现"查看技能"
   setTimeout(() => {
-    skillStep.value = 1
+    currentSkillText.value = `查看技能 ${activeSkill.value}`
+    showSkillIndicator.value = true
   }, 3000)
   
-  // 步骤2: "查看技能"渐变消失，"读取技能"渐变出现
+  // 步骤2: 模糊替换为"读取技能"
   setTimeout(() => {
-    skillStep.value = 2
-  }, 4500)
+    currentSkillText.value = `读取技能 ${activeSkill.value}`
+  }, 4800)
   
-  // 步骤3: "读取技能"完成，渐变消失
+  // 步骤3: 模糊消失
   setTimeout(() => {
-    skillStep.value = 3
-  }, 5700)
-  
-  // 步骤4: 整个区域消失
-  setTimeout(() => {
-    skillStep.value = 4
-  }, 6300)
+    showSkillIndicator.value = false
+    // 等待动画完成后清空
+    setTimeout(() => {
+      activeSkill.value = ''
+      currentSkillText.value = ''
+    }, 600)
+  }, 6400)
 }
 
 // 停止技能动画
 const stopSkillAnimation = () => {
   activeSkill.value = ''
-  skillStep.value = 0
+  currentSkillText.value = ''
+  showSkillIndicator.value = false
   if (skillAnimationTimer) {
     clearTimeout(skillAnimationTimer)
     skillAnimationTimer = null
@@ -1429,95 +1425,102 @@ onMounted(async () => {
   }
 }
 
-/* Agent Skill 技能识别动画样式 */
-.skill-animation {
-  position: relative;
-  margin-top: 0;
-  padding-top: 0;
-  border-top: 1px solid var(--border);
-  min-height: 0;
-  max-height: 0;
+/* Agent Skill 技能识别动画 - 完全重写 */
+.skill-indicator-container {
+  display: flex;
+  justify-content: flex-start;
   width: 100%;
-  opacity: 0;
-  overflow: hidden;
-  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              margin-top 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              padding-top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  animation: expandSkillArea 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  margin-top: 4px;
+  min-height: 24px;
 }
 
-@keyframes expandSkillArea {
-  from {
-    opacity: 0;
-    max-height: 0;
-    margin-top: 0;
-    padding-top: 0;
-  }
-  to {
-    opacity: 1;
-    max-height: 100px;
-    margin-top: 12px;
-    padding-top: 12px;
-  }
-}
-
-.skill-animation.fadeout {
-  animation: collapseSkillArea 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-@keyframes collapseSkillArea {
-  from {
-    opacity: 1;
-    max-height: 100px;
-    margin-top: 12px;
-    padding-top: 12px;
-  }
-  to {
-    opacity: 0;
-    max-height: 0;
-    margin-top: 0;
-    padding-top: 0;
-  }
-}
-
-.skill-step {
-  position: relative;
+.skill-indicator {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), 
+  padding: 4px 8px;
+  background: transparent;
+  border-radius: 6px;
+}
+
+.skill-book-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.skill-indicator-text {
+  font-size: calc(var(--fs-body) * var(--font-scale) * 0.8);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* 外层容器的模糊出现和消失 */
+.skill-blur-enter-active,
+.skill-blur-leave-active {
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+              filter 0.6s cubic-bezier(0.4, 0, 0.2, 1),
               transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.skill-step.active {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.skill-step.fadeout {
+.skill-blur-enter-from {
   opacity: 0;
-  transform: translateY(-10px);
-  pointer-events: none;
+  filter: blur(10px);
+  transform: translateY(8px);
 }
 
-.skill-step-read {
-  /* 读取技能初始状态从下方进入 */
-  transform: translateY(20px);
-  margin-top: -36px;
-}
-
-.skill-step-read.active {
+.skill-blur-enter-to {
+  opacity: 1;
+  filter: blur(0px);
   transform: translateY(0);
 }
 
-.skill-step-read.fadeout {
+.skill-blur-leave-from {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+.skill-blur-leave-to {
+  opacity: 0;
+  filter: blur(10px);
+  transform: translateY(-8px);
+}
+
+/* 内层文字的模糊替换 */
+.skill-text-blur-enter-active,
+.skill-text-blur-leave-active {
+  transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              filter 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.skill-text-blur-leave-active {
+  position: absolute;
+}
+
+.skill-text-blur-enter-from {
+  opacity: 0;
+  filter: blur(8px);
+  transform: translateY(10px);
+}
+
+.skill-text-blur-enter-to {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+.skill-text-blur-leave-from {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+.skill-text-blur-leave-to {
+  opacity: 0;
+  filter: blur(8px);
   transform: translateY(-10px);
 }
 
