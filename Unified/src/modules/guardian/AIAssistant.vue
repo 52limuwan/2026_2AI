@@ -49,6 +49,21 @@
             </div>
           </div>
         </div>
+        
+        <!-- Agent Skill 技能识别动画 -->
+        <transition name="skill-blur">
+          <div v-if="showSkillIndicator && isThinking" class="skill-indicator-container">
+            <transition name="skill-text-blur" mode="out-in">
+              <div class="skill-indicator" :key="currentSkillText">
+                <svg class="skill-book-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="skill-indicator-text">{{ currentSkillText }}</span>
+              </div>
+            </transition>
+          </div>
+        </transition>
 
         <!-- AI 正在输入中（备用，流式输出时不显示） -->
         <div v-if="isLoading && !isStreaming && !isThinking" class="message-item message-ai">
@@ -225,6 +240,242 @@ const showWelcomeMessage = ref(true)
 const showHistoryDialog = ref(false)
 const conversations = ref([])
 
+// Agent Skill 技能识别相关状态
+const activeSkill = ref('')
+const currentSkillText = ref('')
+const showSkillIndicator = ref(false)
+let skillAnimationTimer = null
+
+// Guardian端技能关键词映射 - 全面扩充版
+const skillKeywords = {
+  '营养分析师': [
+    // 营养分析
+    '营养分析', '营养报告', '营养评估', '营养状况', '营养数据', '饮食分析', '膳食分析',
+    '营养缺口', '营养不足', '营养过剩', '营养均衡', '营养结构', '长期影响', '改善方案',
+    // 营养素
+    '蛋白质', '脂肪', '碳水', '维生素', '矿物质', '钙', '铁', '锌', '硒', '膳食纤维',
+    '热量', '卡路里', '能量', '营养素', '微量元素', '宏量营养素',
+    // 营养问题
+    '营养不良', '消瘦', '肥胖', '超重', '体重', '贫血', '缺钙', '缺铁', '缺锌',
+    '骨质疏松', '肌肉流失', '免疫力', '抵抗力', '营养风险',
+    // 饮食评价
+    '吃得怎么样', '营养够吗', '吃得好吗', '饮食合理吗', '搭配对吗',
+    '需要补充', '要补什么', '缺什么', '多了什么', '少了什么',
+    // 改善建议
+    '怎么改善', '如何调整', '饮食建议', '营养建议', '改进方案', '优化方案',
+    '增加什么', '减少什么', '注意什么', '怎么吃', '吃什么好'
+  ],
+  
+  '健康监护顾问': [
+    // 健康监测
+    '健康监测', '健康状况', '健康数据', '健康指标', '监控', '监护', '观察',
+    '血压', '血糖', '血脂', '心率', '体温', '体重', '血氧', '尿量',
+    // 异常识别
+    '异常', '不正常', '不对劲', '有问题', '不太好', '变化', '波动', '升高', '降低',
+    '偏高', '偏低', '超标', '不稳定', '反复', '控制不住',
+    // 症状表现
+    '不舒服', '难受', '疼痛', '头晕', '头痛', '胸闷', '气短', '心慌', '乏力',
+    '恶心', '呕吐', '腹泻', '便秘', '水肿', '发烧', '咳嗽', '喘',
+    // 风险预警
+    '需要注意', '要警惕', '风险', '危险', '预警', '报警', '紧急', '严重',
+    '要紧吗', '严重吗', '有问题吗', '正常吗', '危险吗', '会不会',
+    // 就医建议
+    '就医', '看医生', '去医院', '挂号', '急诊', '120', '叫救护车',
+    '需要看吗', '要去医院吗', '怎么办', '该怎么做', '如何处理'
+  ],
+  
+  '慢病协同管理师': [
+    // 慢性病类型
+    '慢性病', '三高', '高血压', '糖尿病', '高血脂', '冠心病', '心脏病',
+    '脑梗', '中风', '痛风', '肾病', '肝病', '慢阻肺', '哮喘',
+    // 用药管理
+    '用药', '服药', '吃药', '药物', '药品', '遵医嘱', '依从性', '按时吃药',
+    '忘记吃药', '漏吃', '多吃', '少吃', '停药', '换药', '调药', '加药', '减药',
+    // 监督提醒
+    '怎么监督', '如何提醒', '监督吃药', '提醒服药', '督促', '检查',
+    '不肯吃', '不愿意', '抗拒', '不配合', '偷偷不吃', '藏药',
+    // 指标控制
+    '血压控制', '血糖控制', '血脂控制', '指标控制', '达标', '稳定',
+    '控制不住', '反复', '波动大', '不稳定', '升高', '降低',
+    // 并发症预防
+    '并发症', '复查', '定期检查', '体检', '监测', '预防', '避免',
+    '会不会', '有没有', '风险', '危险', '严重吗',
+    // 家庭管理
+    '家庭护理', '居家管理', '配合治疗', '日常管理', '生活管理',
+    '怎么配合', '如何帮助', '做什么', '注意什么', '禁忌'
+  ],
+  
+  '心理关怀指导师': [
+    // 情绪问题
+    '心理', '情绪', '心情', '精神', '心理健康', '情绪问题', '心理问题',
+    '不开心', '闷闷不乐', '情绪低落', '心情不好', '郁闷', '烦躁', '焦虑',
+    '担心', '害怕', '恐惧', '紧张', '不安', '孤独', '寂寞', '孤单',
+    // 行为表现
+    '不爱说话', '不想动', '不想出门', '不想见人', '发脾气', '易怒',
+    '哭', '流泪', '叹气', '唉声叹气', '抱怨', '埋怨', '负面',
+    // 沟通交流
+    '沟通', '交流', '聊天', '说话', '倾听', '理解', '关心', '关怀',
+    '怎么沟通', '如何交流', '说什么', '怎么说', '怎么劝', '怎么安慰',
+    '不听', '不理', '不说', '沉默', '冷战', '对着干',
+    // 陪伴方法
+    '陪伴', '陪', '陪着', '在一起', '相处', '互动', '活动',
+    '怎么陪', '陪什么', '做什么', '玩什么', '聊什么', '去哪',
+    // 代际关系
+    '代沟', '不理解', '理解不了', '想不通', '观念', '思想', '代际',
+    '老思想', '固执', '倔强', '不听劝', '说不通', '讲不通',
+    // 心理支持
+    '心理支持', '情感支持', '精神支持', '鼓励', '安慰', '开导',
+    '怎么鼓励', '如何开导', '说什么好', '怎么帮', '如何支持'
+  ],
+  
+  '居家安全顾问': [
+    // 安全问题
+    '安全', '危险', '不安全', '隐患', '风险', '意外', '事故',
+    '跌倒', '摔倒', '摔跤', '滑倒', '绊倒', '碰撞', '磕碰',
+    // 环境改造
+    '改造', '装修', '布置', '调整', '优化', '适老化', '无障碍',
+    '怎么改造', '如何布置', '改什么', '装什么', '买什么', '需要什么',
+    // 安全设施
+    '扶手', '防滑', '防滑垫', '防滑条', '夜灯', '感应灯', '照明',
+    '护栏', '围栏', '安全门', '门槛', '台阶', '坡道', '电梯',
+    // 辅助设备
+    '轮椅', '拐杖', '助行器', '护理床', '坐便椅', '洗澡椅', '扶手架',
+    '呼叫器', '报警器', '监控', '摄像头', '定位器', '手环',
+    // 房间布局
+    '卧室', '客厅', '厨房', '卫生间', '浴室', '阳台', '楼梯', '走廊',
+    '地面', '地板', '地砖', '地毯', '门', '窗', '家具', '电器',
+    // 预防措施
+    '预防', '防护', '保护', '避免', '注意', '小心', '当心',
+    '怎么预防', '如何避免', '注意什么', '防什么', '怎么防'
+  ],
+  
+  '护理技能培训师': [
+    // 基础护理
+    '护理', '照顾', '照料', '照看', '看护', '护理方法', '护理技巧',
+    '怎么护理', '如何照顾', '怎么照顾', '怎么做', '如何做', '步骤', '方法',
+    // 日常护理
+    '洗澡', '擦身', '擦洗', '清洁', '洗脸', '洗头', '洗脚', '泡脚',
+    '刷牙', '漱口', '口腔护理', '剪指甲', '理发', '刮胡子',
+    // 穿衣护理
+    '穿衣', '脱衣', '换衣', '穿鞋', '脱鞋', '穿袜子', '系扣子',
+    '怎么穿', '如何脱', '穿不上', '脱不下', '不配合', '不让',
+    // 饮食护理
+    '喂饭', '喂食', '喂水', '喂药', '吃饭', '进食', '饮水',
+    '不肯吃', '不想吃', '吃不下', '呛', '噎', '咽不下', '吞咽困难',
+    // 排泄护理
+    '如厕', '上厕所', '大便', '小便', '大小便', '排便', '排尿',
+    '尿失禁', '便秘', '腹泻', '尿不出', '拉不出', '尿频', '尿急',
+    '尿布', '尿垫', '尿不湿', '纸尿裤', '便盆', '尿壶',
+    // 卧床护理
+    '卧床', '翻身', '拍背', '按摩', '活动', '被动活动', '关节活动',
+    '褥疮', '压疮', '红肿', '破皮', '皮肤护理', '预防褥疮',
+    // 伤口护理
+    '伤口', '换药', '消毒', '清洗', '包扎', '敷料', '纱布',
+    '化脓', '感染', '发炎', '红肿', '流脓', '愈合', '结痂',
+    // 学习困难
+    '不会', '不懂', '不明白', '学不会', '做不好', '做错',
+    '教我', '教教我', '示范', '演示', '讲解', '指导'
+  ],
+  
+  '就医陪诊助手': [
+    // 就医准备
+    '就医', '看病', '看医生', '去医院', '陪诊', '陪同', '陪着去',
+    '准备什么', '带什么', '需要什么', '要带', '别忘了', '清单',
+    // 挂号就诊
+    '挂号', '预约', '排队', '叫号', '候诊', '等待', '就诊',
+    '哪个科', '看什么科', '挂什么号', '找哪个医生', '专家', '普通',
+    // 检查化验
+    '检查', '化验', '抽血', '验血', '验尿', '拍片', 'X光', 'CT',
+    'B超', '彩超', '核磁', 'MRI', '心电图', '胃镜', '肠镜',
+    '空腹', '憋尿', '准备', '注意事项', '禁忌', '能不能',
+    // 医患沟通
+    '医生说', '医嘱', '诊断', '病情', '处方', '用药', '治疗方案',
+    '怎么问', '问什么', '说什么', '怎么说', '如何沟通', '表达',
+    '没听懂', '不明白', '没记住', '忘了', '再问', '确认',
+    // 取药缴费
+    '缴费', '付费', '医保', '自费', '报销', '发票', '收据',
+    '取药', '拿药', '配药', '药房', '药品', '药单',
+    // 复诊随访
+    '复诊', '复查', '随访', '回访', '下次', '什么时候', '多久',
+    '带什么', '注意什么', '观察什么', '记录什么'
+  ],
+  
+  '康复计划师': [
+    // 康复评估
+    '康复', '康复训练', '康复计划', '康复方案', '康复目标', '康复评估',
+    '恢复', '恢复情况', '恢复程度', '功能恢复', '能力恢复',
+    // 功能训练
+    '训练', '锻炼', '练习', '运动', '活动', '功能训练', '康复训练',
+    '肢体训练', '关节训练', '肌肉训练', '平衡训练', '步态训练',
+    // 训练内容
+    '怎么训练', '如何康复', '做什么', '练什么', '怎么练', '如何做',
+    '动作', '姿势', '方法', '技巧', '要领', '注意事项',
+    // 训练强度
+    '强度', '频率', '次数', '时间', '多久', '多长时间', '几次',
+    '累不累', '能不能', '可以吗', '会不会', '安全吗', '适合吗',
+    // 康复进度
+    '进展', '进度', '效果', '改善', '好转', '恢复', '变化',
+    '快不快', '慢不慢', '正常吗', '够不够', '多久能好', '能恢复吗',
+    // 康复目标
+    '目标', '期望', '希望', '能达到', '能恢复到', '能不能',
+    '走路', '站立', '坐起', '自理', '独立', '正常生活',
+    // 辅助康复
+    '理疗', '物理治疗', '作业治疗', '言语治疗', '康复器械', '辅助设备',
+    '按摩', '推拿', '针灸', '艾灸', '热敷', '冷敷', '电疗'
+  ],
+  
+  '养老资源顾问': [
+    // 养老方式
+    '养老', '养老方式', '养老选择', '居家养老', '社区养老', '机构养老',
+    '养老院', '敬老院', '护理院', '老年公寓', '养老中心', '日间照料',
+    // 服务类型
+    '养老服务', '护理服务', '照护服务', '助餐', '助浴', '助洁', '助医',
+    '上门服务', '居家服务', '社区服务', '机构服务', '医养结合',
+    // 选择对比
+    '选择', '对比', '比较', '推荐', '哪家好', '哪个好', '哪种好',
+    '优缺点', '好处', '坏处', '适合', '不适合', '合适吗',
+    // 费用价格
+    '费用', '价格', '收费', '多少钱', '贵不贵', '便宜', '实惠',
+    '押金', '月费', '护理费', '伙食费', '医疗费', '额外费用',
+    // 服务质量
+    '服务', '质量', '水平', '专业', '口碑', '评价', '好不好',
+    '靠谱吗', '可靠吗', '正规吗', '有资质吗', '合法吗',
+    // 政策补贴
+    '养老政策', '政策', '补贴', '津贴', '优惠', '福利', '待遇',
+    '医保', '保险', '长护险', '申请', '条件', '资格', '流程',
+    // 实地考察
+    '参观', '考察', '看看', '去看', '实地', '环境', '设施', '条件',
+    '床位', '房间', '食堂', '活动室', '医务室', '康复室'
+  ],
+  
+  '家庭沟通协调师': [
+    // 家庭成员
+    '家庭', '家人', '家里', '子女', '儿女', '儿子', '女儿',
+    '兄弟', '姐妹', '兄弟姐妹', '配偶', '老伴', '媳妇', '女婿',
+    // 责任分工
+    '分工', '责任', '义务', '照顾', '照料', '轮流', '排班',
+    '谁来', '谁管', '谁负责', '怎么分', '如何分', '分配',
+    // 矛盾纠纷
+    '矛盾', '纠纷', '冲突', '争执', '吵架', '闹', '不和',
+    '意见不一', '不同意', '反对', '不配合', '推卸', '逃避',
+    // 沟通协调
+    '沟通', '协调', '商量', '讨论', '谈', '说', '开会',
+    '怎么沟通', '如何协调', '怎么说', '如何谈', '说什么',
+    // 决策问题
+    '决定', '决策', '选择', '怎么办', '如何是好', '听谁的',
+    '意见', '建议', '想法', '看法', '态度', '立场',
+    // 经济问题
+    '钱', '费用', '开支', '花费', '负担', '分摊', '出钱',
+    '谁出', '怎么出', '出多少', '公平', '不公平', '承担',
+    // 请人帮忙
+    '请人', '雇人', '保姆', '护工', '钟点工', '陪护', '照护员',
+    '找谁', '哪里找', '多少钱', '靠谱吗', '怎么管', '如何监督',
+    // 情感维系
+    '感情', '亲情', '孝顺', '孝心', '关心', '关爱', '体谅',
+    '理解', '包容', '尊重', '陪伴', '关注', '在乎'
+  ]
+}
+
 // 电话通话相关状态
 const showPhoneCall = ref(false)
 const phoneCallAnimating = ref(false)
@@ -239,11 +490,13 @@ const welcomeMessage = computed(() => {
   const userName = userStore.profile?.name || '用户'
   return {
     role: 'ai',
-    content: `**${userName}，我是您的 AI顾问**
-
-专为家属提供老年人健康管理服务。我可以帮你分析老人的饮食营养、解读健康报告、提供护理建议，让你更好地照顾家人的健康。
-
-有什么我可以帮助你的吗？`,
+    content: `**${userName}，我是您的 AI健康顾问**
+请问我有什么可以帮到您的吗？
+我可以为您提供以下服务：
+**营养分析** - 老人饮食营养深度评估     
+**健康监护** - 异常数据及时预警提醒         
+**护理指导** - 专业居家护理技能培训
+**就医陪诊** - 就医流程全程贴心协助`,
     timestamp: Date.now()
   }
 })
@@ -530,6 +783,56 @@ const streamText = (text, messageIndex) => {
   })
 }
 
+// 识别用户消息中的技能
+const detectSkill = (message) => {
+  for (const [skill, keywords] of Object.entries(skillKeywords)) {
+    for (const keyword of keywords) {
+      if (message.includes(keyword)) {
+        return skill
+      }
+    }
+  }
+  return ''
+}
+
+// 启动技能动画
+const startSkillAnimation = () => {
+  currentSkillText.value = ''
+  showSkillIndicator.value = false
+  
+  if (skillAnimationTimer) {
+    clearTimeout(skillAnimationTimer)
+  }
+  
+  setTimeout(() => {
+    currentSkillText.value = `查看技能 ${activeSkill.value}`
+    showSkillIndicator.value = true
+  }, 3000)
+  
+  setTimeout(() => {
+    currentSkillText.value = `读取技能 ${activeSkill.value}`
+  }, 4800)
+  
+  setTimeout(() => {
+    showSkillIndicator.value = false
+    setTimeout(() => {
+      activeSkill.value = ''
+      currentSkillText.value = ''
+    }, 600)
+  }, 6400)
+}
+
+// 停止技能动画
+const stopSkillAnimation = () => {
+  activeSkill.value = ''
+  currentSkillText.value = ''
+  showSkillIndicator.value = false
+  if (skillAnimationTimer) {
+    clearTimeout(skillAnimationTimer)
+    skillAnimationTimer = null
+  }
+}
+
 // 发送消息
 const handleSend = async () => {
   const content = inputText.value.trim()
@@ -547,6 +850,13 @@ const handleSend = async () => {
 
   // 保存用户消息到数据库
   saveMessageToDatabase(userMessage)
+
+  // 识别技能
+  const detectedSkill = detectSkill(content)
+  if (detectedSkill) {
+    activeSkill.value = detectedSkill
+    startSkillAnimation()
+  }
 
   // 显示"思考中"状态
   isThinking.value = true
@@ -584,6 +894,9 @@ const handleSend = async () => {
     
     isThinking.value = false
     
+    // 停止技能动画
+    stopSkillAnimation()
+    
     // 添加 AI 回复
     const aiMessage = {
       role: 'ai',
@@ -605,6 +918,7 @@ const handleSend = async () => {
     console.error('发送消息失败:', err)
     isThinking.value = false
     isLoading.value = false
+    stopSkillAnimation()
     showToast('发送失败，请稍后重试')
   }
 }
@@ -899,6 +1213,9 @@ onUnmounted(() => {
   // 停止流式输出
   stopStreaming()
   
+  // 停止技能动画
+  stopSkillAnimation()
+  
   // 停止录音
   ws.stopRecording()
   
@@ -966,7 +1283,7 @@ onMounted(async () => {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 20px 14px;
+  padding: 16px 14px;
   /* 添加足够的底部 padding，让消息可以滚动到输入框上方，不被遮挡 */
   /* 输入框位置：底部栏(84px) + 输入框高度(72px) + 额外空间(24px) + safe-bottom */
   padding-bottom: calc(84px + 72px + 24px + var(--safe-bottom, 0px));
@@ -999,7 +1316,7 @@ onMounted(async () => {
 .messages-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
   /* 移除 min-height，让内容自然流动 */
 }
 
@@ -1062,8 +1379,8 @@ onMounted(async () => {
 .message-bubble {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
+  gap: 3px;
+  padding: 8px 10px;
   border-radius: 14px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   word-wrap: break-word;
@@ -1073,7 +1390,7 @@ onMounted(async () => {
 
 /* 欢迎消息特殊样式 */
 .welcome-message {
-  margin-top: 16px;
+  margin-top: 4px;
 }
 
 .welcome-message .message-bubble {
@@ -1084,14 +1401,14 @@ onMounted(async () => {
 .quick-questions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
 }
 
 .quick-question-btn {
-  padding: 10px 14px;
+  padding: 7px 10px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
@@ -1585,6 +1902,105 @@ onMounted(async () => {
   text-align: center;
   padding: 40px 20px;
   color: var(--muted);
+}
+
+/* Agent Skill 技能识别动画 */
+.skill-indicator-container {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  margin-top: 4px;
+  min-height: 24px;
+}
+
+.skill-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: transparent;
+  border-radius: 6px;
+}
+
+.skill-book-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.skill-indicator-text {
+  font-size: calc(var(--fs-body) * var(--font-scale) * 0.8);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* 外层容器的模糊出现和消失 */
+.skill-blur-enter-active,
+.skill-blur-leave-active {
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+              filter 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.skill-blur-enter-from {
+  opacity: 0;
+  filter: blur(10px);
+  transform: translateY(8px);
+}
+
+.skill-blur-enter-to {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+.skill-blur-leave-from {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+.skill-blur-leave-to {
+  opacity: 0;
+  filter: blur(10px);
+  transform: translateY(-8px);
+}
+
+/* 内层文字的模糊替换 */
+.skill-text-blur-enter-active,
+.skill-text-blur-leave-active {
+  transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              filter 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.skill-text-blur-leave-active {
+  position: absolute;
+}
+
+.skill-text-blur-enter-from {
+  opacity: 0;
+  filter: blur(8px);
+  transform: translateY(10px);
+}
+
+.skill-text-blur-enter-to {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+.skill-text-blur-leave-from {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+.skill-text-blur-leave-to {
+  opacity: 0;
+  filter: blur(8px);
+  transform: translateY(-10px);
 }
 
 </style>

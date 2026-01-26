@@ -49,6 +49,21 @@
             </div>
           </div>
         </div>
+        
+        <!-- Agent Skill 技能识别动画 -->
+        <transition name="skill-blur">
+          <div v-if="showSkillIndicator && isThinking" class="skill-indicator-container">
+            <transition name="skill-text-blur" mode="out-in">
+              <div class="skill-indicator" :key="currentSkillText">
+                <svg class="skill-book-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="skill-indicator-text">{{ currentSkillText }}</span>
+              </div>
+            </transition>
+          </div>
+        </transition>
 
         <!-- AI 正在输入中（备用，流式输出时不显示） -->
         <div v-if="isLoading && !isStreaming && !isThinking" class="message-item message-ai">
@@ -225,6 +240,225 @@ const showWelcomeMessage = ref(true)
 const showHistoryDialog = ref(false)
 const conversations = ref([])
 
+// Agent Skill 技能识别相关状态
+const activeSkill = ref('')
+const currentSkillText = ref('')
+const showSkillIndicator = ref(false)
+let skillAnimationTimer = null
+
+// Gov端技能关键词映射 - 全面扩充版
+const skillKeywords = {
+  '社区健康管理师': [
+    // 社区管理
+    '社区健康', '社区管理', '人群健康', '整体健康', '健康管理', '健康水平', '健康状况',
+    '社区居民', '老年人群', '重点人群', '目标人群', '服务对象', '覆盖人群',
+    // 数据分析
+    '健康数据', '统计', '分析', '评估', '监测', '调查', '摸底',
+    '趋势', '变化', '对比', '同比', '环比', '增长', '下降',
+    // 风险管理
+    '高危人群', '重点人群', '风险人群', '筛查', '识别', '发现',
+    '分层管理', '分类管理', '精准管理', '个性化', '差异化',
+    // 干预措施
+    '干预', '改善', '提升', '优化', '促进', '推动', '落实',
+    '措施', '方案', '计划', '项目', '活动', '行动', '工程',
+    // 工作规划
+    '如何提升', '怎么管理', '管理方案', '工作计划', '实施方案',
+    '目标', '指标', '任务', '要求', '标准', '考核', '评价'
+  ],
+  
+  '慢病防控专家': [
+    // 慢性病类型
+    '慢性病', '慢病', '三高', '高血压', '糖尿病', '高血脂', '心脑血管',
+    '冠心病', '脑卒中', '中风', '癌症', '肿瘤', '慢阻肺', '哮喘',
+    // 防控策略
+    '防控', '预防', '控制', '管理', '干预', '治疗', '康复',
+    '防控策略', '防控方案', '防控措施', '防控体系', '防控网络',
+    // 筛查发现
+    '筛查', '早期发现', '早期诊断', '早期治疗', '早诊早治',
+    '体检', '检查', '化验', '测量', '监测', '随访', '追踪',
+    // 健康教育
+    '健康教育', '宣传', '宣教', '讲座', '培训', '咨询', '指导',
+    '知识普及', '科普', '宣传栏', '宣传册', '宣传片', '公众号',
+    // 效果评估
+    '发病率', '患病率', '控制率', '知晓率', '治疗率', '达标率',
+    '并发症', '致残率', '死亡率', '效果', '成效', '改善',
+    // 工作推进
+    '如何防控', '怎么预防', '防控重点', '工作重点', '难点', '痛点',
+    '推进', '落实', '执行', '实施', '开展', '组织', '协调'
+  ],
+  
+  '营养政策顾问': [
+    // 政策制定
+    '营养政策', '政策', '政策制定', '政策设计', '政策规划', '政策文件',
+    '营养改善', '营养干预', '营养项目', '营养计划', '营养工程',
+    // 现状分析
+    '营养状况', '营养水平', '营养问题', '营养不良', '营养过剩',
+    '现状', '问题', '短板', '不足', '差距', '挑战',
+    // 方案设计
+    '方案', '计划', '规划', '设计', '制定', '编制', '起草',
+    '目标', '任务', '措施', '路径', '步骤', '时间表', '路线图',
+    // 资源配置
+    '资源', '资源配置', '资金', '经费', '预算', '投入', '保障',
+    '人力', '物力', '设施', '设备', '场地', '条件',
+    // 效果监测
+    '监测', '评估', '评价', '考核', '检查', '督导', '验收',
+    '效果', '成效', '成果', '产出', '影响', '效益',
+    // 持续改进
+    '改进', '优化', '完善', '调整', '修订', '更新', '升级',
+    '如何制定', '怎么设计', '制定依据', '参考标准', '经验借鉴'
+  ],
+  
+  '健康教育专家': [
+    // 教育形式
+    '健康教育', '健康宣教', '健康促进', '健康传播', '健康科普',
+    '讲座', '培训', '课程', '活动', '义诊', '咨询', '指导',
+    // 教育内容
+    '健康知识', '保健知识', '养生知识', '疾病预防', '自我保健',
+    '内容', '主题', '专题', '课题', '话题', '重点', '要点',
+    // 教育材料
+    '宣传', '宣传材料', '宣传品', '宣传册', '折页', '海报', '展板',
+    '手册', '读本', '指南', '视频', '动画', '图片', '漫画',
+    // 教育对象
+    '老年人', '居民', '群众', '社区', '家庭', '个人', '目标人群',
+    '覆盖', '参与', '受益', '触达', '影响', '辐射',
+    // 行为改变
+    '行为', '行为改变', '生活方式', '健康行为', '不良行为',
+    '知晓率', '知识知晓', '行为形成', '习惯养成', '依从性',
+    // 效果评价
+    '效果', '效果评价', '满意度', '参与率', '覆盖率', '知晓率',
+    '如何开展', '怎么组织', '活动方案', '实施方案', '创新形式'
+  ],
+  
+  '养老服务监管师': [
+    // 监管对象
+    '服务监管', '质量监管', '机构监管', '养老机构', '养老服务',
+    '养老院', '护理院', '日间照料', '居家服务', '社区服务',
+    // 监管内容
+    '服务质量', '服务标准', '服务规范', '服务要求', '服务流程',
+    '人员', '设施', '设备', '环境', '安全', '卫生', '消防',
+    // 监管方式
+    '检查', '督查', '巡查', '抽查', '暗访', '飞检', '专项检查',
+    '评估', '评价', '考核', '打分', '排名', '通报', '公示',
+    // 问题处理
+    '投诉', '举报', '问题', '隐患', '违规', '违法', '不合格',
+    '整改', '处罚', '警告', '罚款', '停业', '吊销', '取缔',
+    // 标准制定
+    '标准', '规范', '制度', '办法', '细则', '指南', '要求',
+    '如何监管', '怎么检查', '监管重点', '监管难点', '监管创新',
+    // 质量提升
+    '质量提升', '服务改进', '规范管理', '标准化', '专业化',
+    '培训', '指导', '帮扶', '示范', '典型', '经验'
+  ],
+  
+  '应急响应协调师': [
+    // 应急类型
+    '应急', '突发', '紧急', '事件', '事故', '意外', '危机',
+    '突发事件', '突发情况', '紧急情况', '意外事件', '安全事故',
+    // 应急准备
+    '应急预案', '预案', '方案', '流程', '机制', '体系', '网络',
+    '准备', '储备', '物资', '装备', '队伍', '人员', '培训', '演练',
+    // 应急响应
+    '应急响应', '快速响应', '及时响应', '启动', '响应', '处置',
+    '报告', '上报', '通报', '预警', '警报', '通知', '调度',
+    // 应急处置
+    '处置', '处理', '应对', '救援', '救助', '疏散', '转移',
+    '现场', '指挥', '协调', '配合', '联动', '支援', '增援',
+    // 资源调度
+    '资源', '资源调度', '人员调度', '物资调配', '车辆调派',
+    '医疗', '救护', '药品', '设备', '床位', '场地',
+    // 事后总结
+    '总结', '复盘', '分析', '评估', '改进', '完善', '优化',
+    '如何应对', '怎么处理', '应急流程', '处置要点', '注意事项'
+  ],
+  
+  '数据分析师': [
+    // 数据类型
+    '数据', '数据分析', '大数据', '健康数据', '业务数据', '统计数据',
+    '指标', '数值', '数字', '信息', '记录', '档案', '台账',
+    // 分析方法
+    '统计', '统计分析', '数据挖掘', '数据建模', '预测分析',
+    '描述性分析', '诊断性分析', '预测性分析', '处方性分析',
+    // 分析维度
+    '趋势', '趋势分析', '对比', '对比分析', '相关性', '因果关系',
+    '维度', '指标', '变量', '因素', '影响', '关联',
+    // 可视化
+    '可视化', '图表', '报表', '报告', '仪表盘', 'Dashboard',
+    '柱状图', '折线图', '饼图', '散点图', '热力图', '地图',
+    // 结论建议
+    '结论', '发现', '洞察', '规律', '特征', '问题', '风险',
+    '建议', '对策', '措施', '方案', '决策', '决策支持',
+    // 数据应用
+    '如何分析', '怎么解读', '分析方法', '分析工具', '分析模型',
+    '应用', '价值', '意义', '作用', '支撑', '依据'
+  ],
+  
+  '资源配置优化师': [
+    // 资源类型
+    '资源', '资源配置', '资源分配', '资源整合', '资源利用',
+    '人力资源', '物力资源', '财力资源', '设施资源', '服务资源',
+    // 需求分析
+    '需求', '需求分析', '需求评估', '需求预测', '需求变化',
+    '供给', '供需', '匹配', '平衡', '缺口', '过剩', '不足',
+    // 配置方案
+    '配置', '配置方案', '分配方案', '调整方案', '优化方案',
+    '规划', '布局', '结构', '比例', '权重', '优先级',
+    // 效率效益
+    '效率', '效益', '效能', '产出', '成本', '投入产出',
+    '利用率', '使用率', '周转率', '满意度', '覆盖率',
+    // 优化调整
+    '优化', '改进', '提升', '调整', '完善', '精准', '科学',
+    '如何配置', '怎么优化', '配置原则', '配置标准', '配置依据',
+    // 动态管理
+    '动态', '动态调整', '灵活', '弹性', '响应', '适应',
+    '监测', '评估', '反馈', '改进', '持续优化'
+  ],
+  
+  '政策法规顾问': [
+    // 政策法规
+    '政策', '法规', '法律', '条例', '规定', '办法', '细则',
+    '文件', '通知', '意见', '方案', '指南', '标准', '规范',
+    // 政策解读
+    '政策解读', '法规解释', '解读', '解释', '说明', '阐释',
+    '理解', '把握', '精神', '要点', '重点', '亮点', '变化',
+    // 合规管理
+    '合规', '依法', '规范', '要求', '标准', '条件', '资格',
+    '合法', '合规性', '规范性', '程序', '流程', '手续',
+    // 申请审批
+    '申请', '审批', '备案', '登记', '许可', '资质', '证照',
+    '材料', '条件', '流程', '时限', '部门', '窗口', '办理',
+    // 法律风险
+    '风险', '法律风险', '合规风险', '违规', '违法', '责任',
+    '处罚', '后果', '影响', '规避', '防范', '应对',
+    // 政策应用
+    '如何理解', '怎么执行', '执行要点', '注意事项', '常见问题',
+    '适用', '适用范围', '适用对象', '适用条件', '例外情况'
+  ],
+  
+  '社区协作促进师': [
+    // 协作主体
+    '协作', '合作', '联动', '协同', '配合', '衔接', '对接',
+    '多方', '各方', '部门', '机构', '组织', '单位', '社会力量',
+    // 协作内容
+    '资源', '资源整合', '资源共享', '优势互补', '互利共赢',
+    '信息', '信息共享', '数据共享', '经验交流', '互学互鉴',
+    // 协作机制
+    '机制', '机制建设', '制度', '平台', '网络', '体系',
+    '联席会议', '工作组', '专班', '联络员', '协调员',
+    // 协作模式
+    '模式', '路径', '方式', '形式', '载体', '抓手',
+    '医养结合', '社区养老', '居家养老', '智慧养老', '互助养老',
+    // 问题协调
+    '问题', '困难', '障碍', '瓶颈', '矛盾', '分歧',
+    '协调', '沟通', '商议', '磋商', '谈判', '调解',
+    // 推进落实
+    '如何协作', '怎么合作', '协作方案', '合作协议', '备忘录',
+    '推进', '推动', '促进', '落实', '实施', '执行',
+    // 共赢发展
+    '共赢', '多赢', '发展', '提升', '效果', '成效',
+    '典型', '示范', '经验', '模式', '推广', '复制'
+  ]
+}
+
 // 电话通话相关状态
 const showPhoneCall = ref(false)
 const phoneCallAnimating = ref(false)
@@ -239,11 +473,13 @@ const welcomeMessage = computed(() => {
   const userName = userStore.profile?.name || '用户'
   return {
     role: 'ai',
-    content: `**${userName}，我是您的 AI顾问**
-
-专为社区工作者提供健康管理支持。我可以帮你分析社区居民的健康数据、生成管理建议、协助制定干预方案，提升社区健康管理效率。
-
-有什么需要帮助的吗？`,
+    content: `**${userName}，我是您的 AI管理顾问**
+请问我有什么可以帮到您的吗？
+我可以为您提供以下服务：
+**健康管理** - 社区居民健康数据分析     
+**慢病防控** - 慢性病防控策略制定         
+**数据分析** - 健康大数据深度挖掘
+**政策咨询** - 养老政策法规专业解读`,
     timestamp: Date.now()
   }
 })
@@ -530,6 +766,56 @@ const streamText = (text, messageIndex) => {
   })
 }
 
+// 识别用户消息中的技能
+const detectSkill = (message) => {
+  for (const [skill, keywords] of Object.entries(skillKeywords)) {
+    for (const keyword of keywords) {
+      if (message.includes(keyword)) {
+        return skill
+      }
+    }
+  }
+  return ''
+}
+
+// 启动技能动画
+const startSkillAnimation = () => {
+  currentSkillText.value = ''
+  showSkillIndicator.value = false
+  
+  if (skillAnimationTimer) {
+    clearTimeout(skillAnimationTimer)
+  }
+  
+  setTimeout(() => {
+    currentSkillText.value = `查看技能 ${activeSkill.value}`
+    showSkillIndicator.value = true
+  }, 3000)
+  
+  setTimeout(() => {
+    currentSkillText.value = `读取技能 ${activeSkill.value}`
+  }, 4800)
+  
+  setTimeout(() => {
+    showSkillIndicator.value = false
+    setTimeout(() => {
+      activeSkill.value = ''
+      currentSkillText.value = ''
+    }, 600)
+  }, 6400)
+}
+
+// 停止技能动画
+const stopSkillAnimation = () => {
+  activeSkill.value = ''
+  currentSkillText.value = ''
+  showSkillIndicator.value = false
+  if (skillAnimationTimer) {
+    clearTimeout(skillAnimationTimer)
+    skillAnimationTimer = null
+  }
+}
+
 // 发送消息
 const handleSend = async () => {
   const content = inputText.value.trim()
@@ -547,6 +833,13 @@ const handleSend = async () => {
 
   // 保存用户消息到数据库
   saveMessageToDatabase(userMessage)
+
+  // 识别技能
+  const detectedSkill = detectSkill(content)
+  if (detectedSkill) {
+    activeSkill.value = detectedSkill
+    startSkillAnimation()
+  }
 
   // 显示"思考中"状态
   isThinking.value = true
@@ -584,6 +877,9 @@ const handleSend = async () => {
     
     isThinking.value = false
     
+    // 停止技能动画
+    stopSkillAnimation()
+    
     // 添加 AI 回复
     const aiMessage = {
       role: 'ai',
@@ -605,6 +901,7 @@ const handleSend = async () => {
     console.error('发送消息失败:', err)
     isThinking.value = false
     isLoading.value = false
+    stopSkillAnimation()
     showToast('发送失败，请稍后重试')
   }
 }
@@ -899,6 +1196,9 @@ onUnmounted(() => {
   // 停止流式输出
   stopStreaming()
   
+  // 停止技能动画
+  stopSkillAnimation()
+  
   // 停止录音
   ws.stopRecording()
   
@@ -966,7 +1266,7 @@ onMounted(async () => {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 20px 14px;
+  padding: 16px 14px;
   /* 添加足够的底部 padding，让消息可以滚动到输入框上方，不被遮挡 */
   /* 输入框位置：底部栏(84px) + 输入框高度(72px) + 额外空间(24px) + safe-bottom */
   padding-bottom: calc(84px + 72px + 24px + var(--safe-bottom, 0px));
@@ -999,7 +1299,7 @@ onMounted(async () => {
 .messages-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
   /* 移除 min-height，让内容自然流动 */
 }
 
@@ -1062,8 +1362,8 @@ onMounted(async () => {
 .message-bubble {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
+  gap: 3px;
+  padding: 8px 10px;
   border-radius: 14px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   word-wrap: break-word;
@@ -1073,7 +1373,7 @@ onMounted(async () => {
 
 /* 欢迎消息特殊样式 */
 .welcome-message {
-  margin-top: 16px;
+  margin-top: 4px;
 }
 
 .welcome-message .message-bubble {
@@ -1084,14 +1384,14 @@ onMounted(async () => {
 .quick-questions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
 }
 
 .quick-question-btn {
-  padding: 10px 14px;
+  padding: 7px 10px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
@@ -1585,6 +1885,105 @@ onMounted(async () => {
   text-align: center;
   padding: 40px 20px;
   color: var(--muted);
+}
+
+/* Agent Skill 技能识别动画 */
+.skill-indicator-container {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  margin-top: 4px;
+  min-height: 24px;
+}
+
+.skill-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: transparent;
+  border-radius: 6px;
+}
+
+.skill-book-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.skill-indicator-text {
+  font-size: calc(var(--fs-body) * var(--font-scale) * 0.8);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* 外层容器的模糊出现和消失 */
+.skill-blur-enter-active,
+.skill-blur-leave-active {
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+              filter 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.skill-blur-enter-from {
+  opacity: 0;
+  filter: blur(10px);
+  transform: translateY(8px);
+}
+
+.skill-blur-enter-to {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+.skill-blur-leave-from {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+.skill-blur-leave-to {
+  opacity: 0;
+  filter: blur(10px);
+  transform: translateY(-8px);
+}
+
+/* 内层文字的模糊替换 */
+.skill-text-blur-enter-active,
+.skill-text-blur-leave-active {
+  transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              filter 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.skill-text-blur-leave-active {
+  position: absolute;
+}
+
+.skill-text-blur-enter-from {
+  opacity: 0;
+  filter: blur(8px);
+  transform: translateY(10px);
+}
+
+.skill-text-blur-enter-to {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+.skill-text-blur-leave-from {
+  opacity: 1;
+  filter: blur(0px);
+  transform: translateY(0);
+}
+
+.skill-text-blur-leave-to {
+  opacity: 0;
+  filter: blur(8px);
+  transform: translateY(-10px);
 }
 
 </style>
