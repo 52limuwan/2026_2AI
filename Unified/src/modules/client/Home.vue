@@ -9,106 +9,149 @@
 
     <!-- 营养对比图表 -->
     <div class="card nutrition-card">
-      <h3 class="card-title">今日营养摄入</h3>
-      
-      <!-- 雷达图 -->
-      <div class="radar-container">
-        <svg class="radar-chart" viewBox="0 0 500 500">
-          <!-- 背景网格 -->
-          <g class="radar-grid">
-            <!-- 5层同心八边形 -->
-            <polygon v-for="level in 5" :key="level"
-              :points="getPolygonPoints(250, 250, 200 * (level / 5))"
-              fill="none"
-              stroke="#e5e7eb"
-              stroke-width="1.5"
-              opacity="0.5"
-            />
-            <!-- 从中心到各顶点的线 -->
-            <line v-for="(item, index) in nutritionItems" :key="'line-' + index"
-              x1="250" y1="250"
-              :x2="getRadarPoint(250, 250, 200, index, nutritionItems.length).x"
-              :y2="getRadarPoint(250, 250, 200, index, nutritionItems.length).y"
-              stroke="#e5e7eb"
-              stroke-width="1"
-              opacity="0.5"
-            />
-          </g>
-          
-          <!-- 推荐范围区域（最大值） -->
-          <polygon
-            :points="getRadarPolygon(250, 250, 200, nutritionItems, 'max')"
-            fill="#1f9c7a"
-            fill-opacity="0.08"
-            stroke="#1f9c7a"
-            stroke-width="2"
-            stroke-dasharray="6,4"
-          />
-          
-          <!-- 实际摄入区域 -->
-          <polygon
-            :points="getRadarPolygon(250, 250, 200, nutritionItems, 'actual')"
-            :fill="getOverallColor()"
-            fill-opacity="0.25"
-            :stroke="getOverallColor()"
-            stroke-width="3"
-          />
-          
-          <!-- 实际摄入的点 -->
-          <circle v-for="(item, index) in nutritionItems" :key="'point-' + index"
-            :cx="getRadarPoint(250, 250, 200, index, nutritionItems.length, parseFloat(item.actual) / item.max).x"
-            :cy="getRadarPoint(250, 250, 200, index, nutritionItems.length, parseFloat(item.actual) / item.max).y"
-            r="5"
-            :fill="getProgressColor(item)"
-            stroke="white"
-            stroke-width="2"
-          />
-          
-          <!-- 标签 -->
-          <g v-for="(item, index) in nutritionItems" :key="'label-' + index" class="radar-label">
-            <text
-              :x="getRadarPoint(250, 250, 230, index, nutritionItems.length).x"
-              :y="getRadarPoint(250, 250, 230, index, nutritionItems.length).y"
-              text-anchor="middle"
-              dominant-baseline="middle"
-              class="label-name"
-            >{{ item.name }}</text>
-            <text
-              :x="getRadarPoint(250, 250, 250, index, nutritionItems.length).x"
-              :y="getRadarPoint(250, 250, 250, index, nutritionItems.length).y"
-              text-anchor="middle"
-              dominant-baseline="middle"
-              class="label-value"
-              :fill="getProgressColor(item)"
-            >{{ formatActualValue(item.actual) }}</text>
-          </g>
-        </svg>
+      <div class="nutrition-header">
+        <h3 class="card-title">今日营养摄入</h3>
+        <div class="nutrition-status-badge" :class="getOverallStatusClass()">
+          <span class="status-icon">{{ getOverallStatusIcon() }}</span>
+          <span class="status-text">{{ getOverallStatusText() }}</span>
+        </div>
       </div>
       
-      <!-- 图例说明 -->
-      <div class="nutrition-legend">
-        <div class="legend-item">
-          <div class="legend-line legend-recommended"></div>
+      <!-- 折线图 -->
+      <div class="line-chart-wrapper">
+        <svg class="line-chart-svg" viewBox="0 0 100 60" preserveAspectRatio="none">
+          <defs>
+            <!-- 渐变填充 -->
+            <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" :style="{ stopColor: getOverallColor(), stopOpacity: 0.3 }" />
+              <stop offset="100%" :style="{ stopColor: getOverallColor(), stopOpacity: 0.05 }" />
+            </linearGradient>
+          </defs>
+          
+          <!-- 网格线 -->
+          <g class="grid-lines">
+            <line x1="0" y1="15" x2="100" y2="15" stroke="#e5e7eb" stroke-width="0.2" opacity="0.5" />
+            <line x1="0" y1="27.5" x2="100" y2="27.5" stroke="#e5e7eb" stroke-width="0.2" opacity="0.5" />
+            <line x1="0" y1="40" x2="100" y2="40" stroke="#e5e7eb" stroke-width="0.2" opacity="0.5" />
+            <line x1="0" y1="52.5" x2="100" y2="52.5" stroke="#e5e7eb" stroke-width="0.2" opacity="0.5" />
+          </g>
+          
+          <!-- 推荐范围区域（从底部0到推荐上限max） -->
+          <g v-for="(item, index) in nutritionItems" :key="'range-' + index">
+            <rect 
+              v-if="index < nutritionItems.length - 1"
+              :x="getXPosition(index)" 
+              :y="getYPositionForValue(item, item.max)" 
+              :width="getXPosition(index + 1) - getXPosition(index)" 
+              :height="60 - getYPositionForValue(item, item.max)" 
+              fill="#10b981" 
+              opacity="0.12" 
+            />
+          </g>
+          
+          <!-- 推荐上限线（虚线） -->
+          <path
+            :d="getRecommendedMaxPath()"
+            fill="none"
+            stroke="#10b981"
+            stroke-width="0.6"
+            stroke-dasharray="3,2"
+            opacity="0.8"
+          />
+          
+          <!-- 折线填充区域 -->
+          <path
+            :d="getAreaPath()"
+            fill="url(#areaGradient)"
+          />
+          
+          <!-- 折线 -->
+          <path
+            :d="getLinePath()"
+            fill="none"
+            :stroke="getOverallColor()"
+            stroke-width="0.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          
+          <!-- 数据点 -->
+          <g v-for="(item, index) in nutritionItems" :key="'point-' + index">
+            <circle
+              :cx="getXPosition(index)"
+              :cy="getYPosition(item)"
+              r="1.5"
+              :fill="getProgressColor(item)"
+              stroke="white"
+              stroke-width="0.5"
+            />
+            <!-- 超出标记 -->
+            <g v-if="isOverLimit(item)">
+              <circle
+                :cx="getXPosition(index)"
+                :cy="getYPosition(item)"
+                r="2.5"
+                fill="none"
+                :stroke="getProgressColor(item)"
+                stroke-width="0.4"
+                opacity="0.6"
+              />
+              <text
+                :x="getXPosition(index)"
+                :y="getYPosition(item) - 3"
+                text-anchor="middle"
+                class="overflow-marker"
+                :fill="getProgressColor(item)"
+              >↑</text>
+            </g>
+          </g>
+        </svg>
+        
+        <!-- X轴标签 -->
+        <div class="chart-x-labels">
+          <div v-for="(item, index) in nutritionItems" :key="'label-' + index" 
+            class="x-label"
+            :style="{ left: getXPosition(index) + '%' }">
+            <span class="x-label-name">{{ item.name }}</span>
+            <span class="x-label-value" :style="{ color: getProgressColor(item) }">
+              {{ formatActualValue(item.actual) }}
+            </span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 图例 -->
+      <div class="chart-legend">
+        <div class="legend-item-simple">
+          <div class="legend-box legend-recommended"></div>
           <span>推荐范围</span>
         </div>
-        <div class="legend-item">
-          <div class="legend-line legend-actual" :style="{ background: getOverallColor() }"></div>
+        <div class="legend-item-simple">
+          <svg width="24" height="12">
+            <line x1="0" y1="6" x2="24" y2="6" :stroke="getOverallColor()" stroke-width="2" />
+          </svg>
           <span>实际摄入</span>
         </div>
       </div>
       
       <!-- 详细数据列表 -->
-      <div class="nutrition-details">
-        <div v-for="item in nutritionItems" :key="item.name" class="detail-row">
-          <span class="detail-name">{{ item.name }}</span>
-          <span class="detail-value">
-            <strong :style="{ color: getProgressColor(item) }">{{ item.actual }}</strong>
-            <span class="detail-unit">{{ item.unit }}</span>
-            <span class="detail-range">/ {{ item.recommended }}</span>
-          </span>
-          <span class="detail-status" :style="{ color: getProgressColor(item) }">
-            {{ getStatusText(item) }}
-          </span>
+      <div class="nutrition-details-compact">
+        <div v-for="item in nutritionItems" :key="item.name" class="detail-row-compact">
+          <div class="detail-left">
+            <span class="detail-name-compact">{{ item.name }}</span>
+            <span class="detail-range-compact">{{ item.recommended }}</span>
+          </div>
+          <div class="detail-right">
+            <span class="detail-value-compact" :style="{ color: getProgressColor(item) }">
+              {{ formatActualValue(item.actual) }} {{ item.unit }}
+            </span>
+            <span class="detail-badge-compact" :style="{ 
+              background: getProgressColor(item),
+              color: 'white'
+            }">
+              {{ getStatusText(item) }}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -371,39 +414,145 @@ const getUnit = (item) => {
   return 'g'
 }
 
-// 雷达图相关函数
-const getRadarPoint = (cx, cy, radius, index, total, ratio = 1) => {
-  const angle = (Math.PI * 2 * index) / total - Math.PI / 2
-  return {
-    x: cx + radius * ratio * Math.cos(angle),
-    y: cy + radius * ratio * Math.sin(angle)
-  }
-}
-
-const getPolygonPoints = (cx, cy, radius) => {
-  const points = []
+// 折线图相关函数
+const getXPosition = (index) => {
   const count = nutritionItems.value.length
-  for (let i = 0; i < count; i++) {
-    const point = getRadarPoint(cx, cy, radius, i, count)
-    points.push(`${point.x},${point.y}`)
-  }
-  return points.join(' ')
+  // 不留边距，直接从0到100
+  return (index / (count - 1)) * 100
 }
 
-const getRadarPolygon = (cx, cy, radius, items, type) => {
-  const points = []
-  items.forEach((item, index) => {
-    let ratio = 0
-    if (type === 'max') {
-      ratio = 1 // 推荐最大值就是100%
-    } else if (type === 'actual') {
-      const actual = parseFloat(item.actual)
-      ratio = Math.min(actual / item.max, 1.5) // 最多显示到150%
-    }
-    const point = getRadarPoint(cx, cy, radius, index, items.length, ratio)
-    points.push(`${point.x},${point.y}`)
-  })
-  return points.join(' ')
+const getYPosition = (item) => {
+  const actual = parseFloat(item.actual)
+  const percentage = (actual / item.max) * 100
+  // 限制在150%以内
+  const cappedPercentage = Math.min(percentage, 150)
+  
+  // Y轴映射：0%在底部(60)，100%在中间(30)，150%在顶部(15)
+  // 0-100%: 60 -> 30
+  // 100-150%: 30 -> 15
+  if (cappedPercentage <= 100) {
+    return 60 - (cappedPercentage / 100) * 30
+  } else {
+    const overPercentage = cappedPercentage - 100
+    return 30 - (overPercentage / 50) * 15
+  }
+}
+
+const getYPositionForValue = (item, value) => {
+  // 根据具体数值计算Y位置
+  const percentage = (value / item.max) * 100
+  const cappedPercentage = Math.min(percentage, 150)
+  
+  if (cappedPercentage <= 100) {
+    return 60 - (cappedPercentage / 100) * 30
+  } else {
+    const overPercentage = cappedPercentage - 100
+    return 30 - (overPercentage / 50) * 15
+  }
+}
+
+const getRecommendedMaxPath = () => {
+  const items = nutritionItems.value
+  if (items.length === 0) return ''
+  
+  let path = `M ${getXPosition(0)} ${getYPositionForValue(items[0], items[0].max)}`
+  
+  for (let i = 1; i < items.length; i++) {
+    const x = getXPosition(i)
+    const y = getYPositionForValue(items[i], items[i].max)
+    path += ` L ${x} ${y}`
+  }
+  
+  return path
+}
+
+const getLinePath = () => {
+  const items = nutritionItems.value
+  if (items.length === 0) return ''
+  
+  let path = `M ${getXPosition(0)} ${getYPosition(items[0])}`
+  
+  for (let i = 1; i < items.length; i++) {
+    const x = getXPosition(i)
+    const y = getYPosition(items[i])
+    path += ` L ${x} ${y}`
+  }
+  
+  return path
+}
+
+const getAreaPath = () => {
+  const items = nutritionItems.value
+  if (items.length === 0) return ''
+  
+  let path = `M ${getXPosition(0)} ${getYPosition(items[0])}`
+  
+  for (let i = 1; i < items.length; i++) {
+    const x = getXPosition(i)
+    const y = getYPosition(items[i])
+    path += ` L ${x} ${y}`
+  }
+  
+  // 闭合路径到底部（图表底部边框）
+  path += ` L ${getXPosition(items.length - 1)} 60 L ${getXPosition(0)} 60 Z`
+  
+  return path
+}
+
+const isOverLimit = (item) => {
+  const actual = parseFloat(item.actual)
+  const percentage = (actual / item.max) * 100
+  // 判断是否超过150%阈值
+  return percentage > 150
+}
+
+const getOverallStatusClass = () => {
+  const items = nutritionItems.value
+  const goodCount = items.filter(item => {
+    const actual = parseFloat(item.actual)
+    return actual >= item.min && actual <= item.max
+  }).length
+  
+  if (goodCount >= 6) return 'status-excellent'
+  if (goodCount >= 4) return 'status-good'
+  if (goodCount >= 2) return 'status-warning'
+  return 'status-poor'
+}
+
+const getOverallStatusIcon = () => {
+  const items = nutritionItems.value
+  const goodCount = items.filter(item => {
+    const actual = parseFloat(item.actual)
+    return actual >= item.min && actual <= item.max
+  }).length
+  
+  if (goodCount >= 6) return '★'
+  if (goodCount >= 4) return '✓'
+  if (goodCount >= 2) return '!'
+  return '✕'
+}
+
+const getOverallStatusText = () => {
+  const items = nutritionItems.value
+  const goodCount = items.filter(item => {
+    const actual = parseFloat(item.actual)
+    return actual >= item.min && actual <= item.max
+  }).length
+  
+  if (goodCount >= 6) return '营养摄入优秀'
+  if (goodCount >= 4) return '营养摄入良好'
+  if (goodCount >= 2) return '营养需要调整'
+  return '营养严重失衡'
+}
+
+const getBalancePercentage = () => {
+  const items = nutritionItems.value
+  const goodCount = items.filter(item => {
+    const actual = parseFloat(item.actual)
+    return actual >= item.min && actual <= item.max
+  }).length
+  
+  return Math.round((goodCount / items.length) * 100)
 }
 
 const getOverallColor = () => {
@@ -607,137 +756,187 @@ onUnmounted(() => {
 }
 
 .nutrition-card {
-  background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+  background: white;
+  border: 1px solid #e5e7eb;
+}
+
+.nutrition-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .card-title {
   font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.nutrition-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.nutrition-status-badge.status-excellent {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
+.nutrition-status-badge.status-good {
+  background: linear-gradient(135deg, #34d399, #10b981);
+  color: white;
+}
+
+.nutrition-status-badge.status-warning {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: white;
+}
+
+.nutrition-status-badge.status-poor {
+  background: linear-gradient(135deg, #f87171, #ef4444);
+  color: white;
+}
+
+.status-icon {
+  font-size: 14px;
+}
+
+.line-chart-wrapper {
+  position: relative;
+  margin: 20px 0;
+}
+
+.line-chart-svg {
+  width: 100%;
+  height: 200px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: linear-gradient(to bottom, #fafbfc 0%, #ffffff 100%);
+}
+
+.overflow-marker {
+  font-size: 4px;
+  font-weight: bold;
+}
+
+.chart-x-labels {
+  position: relative;
+  margin-top: 12px;
+  height: 50px;
+}
+
+.x-label {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.x-label-name {
+  font-size: 11px;
   font-weight: 600;
   color: var(--text);
-  margin: 0 0 20px 0;
-  padding-bottom: 12px;
-  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
 }
 
-.radar-container {
-  margin: 20px auto;
-  max-width: 500px;
-  width: 100%;
-  padding: 20px 0;
-}
-
-.radar-chart {
-  width: 100%;
-  height: auto;
-  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.05));
-}
-
-.radar-label .label-name {
+.x-label-value {
   font-size: 13px;
-  font-weight: 600;
-  fill: var(--text);
-}
-
-.radar-label .label-value {
-  font-size: 15px;
   font-weight: 700;
 }
 
-.nutrition-legend {
+.chart-legend {
   display: flex;
   justify-content: center;
-  gap: 32px;
-  margin: 20px 0;
-  padding: 14px;
-  background: var(--surface-soft);
-  border-radius: 10px;
+  gap: 24px;
+  margin: 16px 0;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
 }
 
-.legend-item {
+.legend-item-simple {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
+  gap: 8px;
+  font-size: 13px;
   color: var(--text);
-  font-weight: 500;
 }
 
-.legend-line {
-  width: 32px;
-  height: 4px;
+.legend-box {
+  width: 20px;
+  height: 12px;
   border-radius: 2px;
 }
 
 .legend-recommended {
-  background: #1f9c7a;
-  opacity: 0.5;
-  border: 1px dashed #1f9c7a;
+  background: #10b981;
+  opacity: 0.15;
+  border: 1px solid #10b981;
 }
 
-.legend-actual {
-  border-radius: 2px;
+.nutrition-details-compact {
+  margin-top: 20px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 16px;
 }
 
-.nutrition-details {
-  margin-top: 24px;
-  border-top: 2px solid var(--border);
-  padding-top: 20px;
-}
-
-.detail-row {
+.detail-row-compact {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding: 12px 8px;
-  border-bottom: 1px solid var(--surface-soft);
-  transition: background 0.2s;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f3f4f6;
 }
 
-.detail-row:hover {
-  background: var(--surface-soft);
-  border-radius: 6px;
-}
-
-.detail-row:last-child {
+.detail-row-compact:last-child {
   border-bottom: none;
 }
 
-.detail-name {
+.detail-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-name-compact {
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
-  flex: 0 0 90px;
 }
 
-.detail-value {
-  flex: 1;
-  font-size: 14px;
-  color: var(--text);
-  text-align: center;
+.detail-range-compact {
+  font-size: 12px;
+  color: var(--muted);
 }
 
-.detail-value strong {
-  font-size: 17px;
+.detail-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.detail-value-compact {
+  font-size: 16px;
   font-weight: 700;
 }
 
-.detail-unit {
-  font-size: 12px;
-  color: var(--muted);
-  margin-left: 2px;
-}
-
-.detail-range {
-  color: var(--muted);
-  margin-left: 6px;
-  font-size: 13px;
-}
-
-.detail-status {
-  font-size: 14px;
+.detail-badge-compact {
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 11px;
   font-weight: 600;
-  flex: 0 0 60px;
-  text-align: right;
 }
 
 .nutrition-header {
