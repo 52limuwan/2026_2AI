@@ -29,7 +29,19 @@
 
     <!-- 创建新计划 -->
     <div class="card new-plan-card">
-      <h3>{{ editingPlan ? '编辑计划' : '创建新计划' }}</h3>
+      <div class="card-header-with-action">
+        <h3>{{ editingPlan ? '编辑计划' : '创建新计划' }}</h3>
+        <button 
+          v-if="!editingPlan"
+          class="ai-capsule-btn" 
+          @click="generateAIPlan" 
+          :disabled="isGenerating"
+        >
+          <span v-if="isGenerating">生成中...</span>
+          <span v-else>AI生成采购计划</span>
+        </button>
+      </div>
+      <p v-if="aiMessage" :class="['ai-message', aiMessageType]">{{ aiMessage }}</p>
       <input type="date" v-model="form.planDate" class="input" />
       <textarea 
         v-model="form.itemsText" 
@@ -122,7 +134,8 @@ import {
   createPurchasePlan, 
   updatePurchasePlan, 
   deletePurchasePlan as deletePlanApi,
-  getPurchaseStats 
+  getPurchaseStats,
+  generateAIPurchasePlan
 } from '../../api/merchant'
 
 const plans = ref([])
@@ -130,6 +143,9 @@ const stats = ref({ topItems: [], totalPlans: 0 })
 const filter = ref('all')
 const message = ref('')
 const editingPlan = ref(null)
+const isGenerating = ref(false)
+const aiMessage = ref('')
+const aiMessageType = ref('info')
 
 const form = ref({
   planDate: '',
@@ -313,6 +329,81 @@ const formatDate = (dateStr) => {
 const statusText = (status) => {
   return status === 'completed' ? '已完成' : '待采购'
 }
+
+const generateAIPlan = async () => {
+  if (isGenerating.value) return
+  
+  isGenerating.value = true
+  aiMessage.value = '正在分析订单数据和菜品销量...'
+  aiMessageType.value = 'info'
+  
+  try {
+    const res = await generateAIPurchasePlan()
+    console.log('完整响应:', res)
+    console.log('响应数据:', res.data)
+    
+    const data = res.data.data
+    console.log('AI生成结果:', data)
+    console.log('采购项目:', data?.items)
+    
+    // 检查数据结构
+    if (!data) {
+      throw new Error('返回数据为空')
+    }
+    
+    if (!data.items) {
+      throw new Error('返回数据中没有 items 字段')
+    }
+    
+    if (!Array.isArray(data.items)) {
+      throw new Error('items 不是数组格式')
+    }
+    
+    if (data.items.length === 0) {
+      throw new Error('没有生成任何采购项目')
+    }
+    
+    // 自动填充到表单
+    form.value.planDate = data.planDate || new Date(Date.now() + 86400000).toISOString().split('T')[0]
+    form.value.notes = data.notes || ''
+    
+    // 格式化采购项目
+    const itemsText = data.items
+      .map(item => {
+        const reason = item.reason ? ` # ${item.reason}` : ''
+        return `${item.name} ${item.quantity}${item.unit ? ' ' + item.unit : ''}${reason}`
+      })
+      .join('\n')
+    
+    console.log('格式化后的文本:', itemsText)
+    form.value.itemsText = itemsText
+    
+    console.log('表单数据:', form.value)
+    
+    aiMessage.value = data.message || `AI采购计划已生成（${data.items.length}项）！请检查并调整后点击"创建"保存。`
+    aiMessageType.value = 'success'
+    
+    // 不刷新列表，等用户手动保存
+    
+    // 滚动到表单顶部
+    setTimeout(() => {
+      const card = document.querySelector('.new-plan-card')
+      if (card) {
+        window.scrollTo({ top: card.offsetTop - 20, behavior: 'smooth' })
+      }
+    }, 100)
+    
+    setTimeout(() => { aiMessage.value = '' }, 8000)
+  } catch (err) {
+    console.error('AI生成失败:', err)
+    console.error('错误详情:', err.response?.data)
+    aiMessage.value = 'AI生成失败：' + (err.response?.data?.message || err.message)
+    aiMessageType.value = 'error'
+    setTimeout(() => { aiMessage.value = '' }, 5000)
+  } finally {
+    isGenerating.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -408,6 +499,7 @@ const statusText = (status) => {
 
 .new-plan-card h3 {
   font-size: 16px;
+  margin: 0;
 }
 
 .textarea {
@@ -626,6 +718,86 @@ const statusText = (status) => {
   font-weight: 600;
   margin-right: 4px;
   color: var(--text);
+}
+
+.card-header-with-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.card-header-with-action h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.ai-capsule-btn {
+  padding: 6px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.ai-capsule-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.ai-capsule-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.ai-capsule-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-message {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ai-message.info {
+  background: var(--surface-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.ai-message.success {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+
+.ai-message.error {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+@media (max-width: 640px) {
+  .card-header-with-action {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .ai-capsule-btn {
+    width: 100%;
+    text-align: center;
+  }
 }
 
 </style>

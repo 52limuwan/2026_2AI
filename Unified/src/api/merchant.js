@@ -29,6 +29,7 @@ export const createPurchasePlan = (payload) => http.post('/merchant/purchase-pla
 export const updatePurchasePlan = (id, payload) => http.put(`/merchant/purchase-plan/${id}`, payload)
 export const deletePurchasePlan = (id) => http.delete(`/merchant/purchase-plan/${id}`)
 export const getPurchaseStats = () => http.get('/merchant/purchase-stats')
+export const generateAIPurchasePlan = () => http.post('/merchant/purchase-plan/generate')
 
 export const getSolarTips = () => http.get('/merchant/solar-term/tips')
 export const createSolarTip = (payload) => http.post('/merchant/solar-term/tips', payload)

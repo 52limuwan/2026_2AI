@@ -614,6 +614,94 @@ router.get('/purchase-stats', async (req, res) => {
   return success(res, { topItems, totalPlans: plans.length });
 });
 
+// AI生成采购计划
+router.post('/purchase-plan/generate', async (req, res) => {
+  try {
+    const { generatePurchasePlan } = require('../services/aiService');
+    
+    // 获取当前选择的店面ID
+    const profile = await db.get('SELECT current_store_id FROM merchant_profiles WHERE user_id = :id', { id: req.user.id });
+    const currentStoreId = profile?.current_store_id;
+    
+    console.log(`\n[Merchant] 商户 ${req.user.id} 请求AI生成采购计划`);
+    console.log(`  当前店面ID: ${currentStoreId || '未选择'}`);
+    
+    // 获取近7天订单统计
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+    
+    let orderCondition = 'o.merchant_id = :merchant_id AND date(o.created_at) >= :seven_days_ago';
+    const params = { merchant_id: req.user.id, seven_days_ago: sevenDaysAgoStr };
+    
+    if (currentStoreId) {
+      orderCondition += ' AND (o.store_id = :store_id OR o.store_id IS NULL)';
+      params.store_id = currentStoreId;
+    }
+    
+    const orderStats = await db.get(
+      `SELECT COUNT(DISTINCT o.id) as total_orders FROM orders o WHERE ${orderCondition}`,
+      params
+    );
+    
+    // 获取菜品及其销量
+    let dishCondition = 'd.merchant_id = :merchant_id';
+    const dishParams = { merchant_id: req.user.id };
+    
+    if (currentStoreId) {
+      dishCondition += ' AND (d.store_id = :store_id OR d.store_id IS NULL)';
+      dishParams.store_id = currentStoreId;
+    }
+    
+    const dishes = await db.all(
+      `SELECT d.id, d.name, d.stock, 
+        COALESCE(SUM(oi.quantity), 0) as sales
+      FROM dishes d
+      LEFT JOIN order_items oi ON oi.dish_id = d.id
+      LEFT JOIN orders o ON o.id = oi.order_id AND date(o.created_at) >= :seven_days_ago
+      WHERE ${dishCondition}
+      GROUP BY d.id
+      ORDER BY sales DESC`,
+      { ...dishParams, seven_days_ago: sevenDaysAgoStr }
+    );
+    
+    console.log(`  订单统计: 近7天${orderStats.total_orders}笔订单`);
+    console.log(`  菜品数量: ${dishes.length}道菜品`);
+    console.log(`  热销菜品: ${dishes.filter(d => d.sales > 0).length}道`);
+    
+    // 调用 AI 服务生成采购计划
+    const { items, notes, tokensUsed, model } = await generatePurchasePlan(
+      { totalOrders: orderStats.total_orders || 0 },
+      dishes
+    );
+    
+    console.log(`  生成结果: ${items.length} 项采购项目`);
+    console.log(`  使用模型: ${model}`);
+    console.log(`  Token 消耗: ${tokensUsed}`);
+    
+    // 计算明天的日期
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    
+    // 只返回生成的数据，不保存到数据库
+    console.log(`  采购计划已生成，等待用户确认保存\n`);
+    
+    return success(res, {
+      planDate: tomorrowStr,
+      items,
+      notes: notes || '',
+      tokensUsed,
+      model,
+      orderCount: orderStats.total_orders || 0,
+      message: `已根据近7天订单数据（${orderStats.total_orders}笔）生成明天的采购计划，请检查后保存`
+    }, 'AI采购计划已生成');
+  } catch (error) {
+    console.error('AI生成采购计划失败:', error);
+    return failure(res, 'AI生成采购计划失败: ' + error.message, 500);
+  }
+});
+
 // 店面管理相关API
 router.get('/stores', async (req, res) => {
   const stores = await db.all(

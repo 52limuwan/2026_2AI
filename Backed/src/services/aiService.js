@@ -723,12 +723,263 @@ function generateFallbackSuggestion(clientData) {
   };
 }
 
+/**
+ * 为商家生成智能采购计划
+ * @param {Object} orderData - 订单数据统计
+ * @param {Array} dishes - 菜品列表
+ * @returns {Promise<Object>} - 返回采购计划
+ */
+async function generatePurchasePlan(orderData, dishes) {
+  console.log('\n========================================');
+  console.log('[AI 采购计划生成请求] MERCHANT');
+  console.log('========================================');
+  console.log('请求时间:', new Date().toLocaleString('zh-CN'));
+  console.log(`订单数据: 近7天订单${orderData.totalOrders}笔`);
+  console.log(`菜品数量: ${dishes.length}道`);
+  
+  const apiKey = process.env.MERCHANT_OPENAI_API_KEY || process.env.CLIENT_OPENAI_API_KEY;
+  const baseUrl = process.env.MERCHANT_OPENAI_API_URL || process.env.CLIENT_OPENAI_API_URL || 'https://api.siliconflow.cn/v1';
+  const apiUrl = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+  const model = process.env.MERCHANT_OPENAI_MODEL || process.env.CLIENT_OPENAI_MODEL || 'deepseek-ai/DeepSeek-V3';
+  
+  console.log('配置信息:');
+  console.log(`  - API URL: ${apiUrl}`);
+  console.log(`  - Model: ${model}`);
+  console.log(`  - API Key: ${apiKey ? apiKey.substring(0, 10) + '...' : '未配置'}`);
+  
+  if (!apiKey || apiKey.includes('your_') || apiKey.includes('_here')) {
+    throw new Error('请在 .env 文件中配置有效的 OPENAI_API_KEY');
+  }
+
+  // 系统提示词
+  const systemPrompt = process.env.MERCHANT_AI_PURCHASE_SYSTEM_PROMPT || 
+    '你是一位专业的餐饮采购顾问，精通食材采购和库存管理。你的任务是根据订单数据和菜品信息，生成合理的采购计划。';
+
+  // 构建菜品销售数据
+  const dishSalesData = dishes
+    .filter(d => d.sales > 0)
+    .sort((a, b) => b.sales - a.sales)
+    .slice(0, 15) // 只取前15道热销菜品
+    .map(d => `${d.name} - 近7天销量:${d.sales}份 库存:${d.stock}份`)
+    .join('\n');
+
+  // 用户提示词模板
+  const userPromptTemplate = process.env.MERCHANT_AI_PURCHASE_PROMPT ||
+    `请根据以下数据生成明天的采购计划：
+
+订单统计（近7天）：
+- 总订单数：{totalOrders}笔
+- 日均订单：{avgOrders}笔
+- 热销菜品数：{hotDishes}道
+
+热销菜品及库存：
+{dishSalesData}
+
+请生成采购计划，要求：
+1. 根据销量预测明天需求
+2. 考虑现有库存情况
+3. 适当预留安全库存
+4. 优先采购热销菜品食材
+5. 数量要合理（避免浪费）
+
+请严格按照以下JSON格式返回（不要添加任何其他文字）：
+{
+  "items": [
+    {
+      "name": "食材名称",
+      "quantity": "数量",
+      "unit": "单位",
+      "reason": "采购原因（简短说明）"
+    }
+  ],
+  "notes": "采购备注（供应商建议、注意事项等）"
+}
+
+注意：
+- 食材名称要具体（如：鸡胸肉、西兰花、胡萝卜）
+- 数量要合理（根据销量和库存计算）
+- 单位要明确（斤、公斤、个、根等）
+- 采购原因要简洁（如：热销菜品主料、库存不足等）`;
+
+  // 替换模板变量
+  const userPrompt = userPromptTemplate
+    .replace('{totalOrders}', orderData.totalOrders || 0)
+    .replace('{avgOrders}', Math.round((orderData.totalOrders || 0) / 7))
+    .replace('{hotDishes}', dishes.filter(d => d.sales > 0).length)
+    .replace('{dishSalesData}', dishSalesData || '暂无销售数据');
+
+  console.log('\n订单数据:');
+  console.log(`  - 总订单数: ${orderData.totalOrders || 0}`);
+  console.log(`  - 日均订单: ${Math.round((orderData.totalOrders || 0) / 7)}`);
+  console.log(`  - 热销菜品: ${dishes.filter(d => d.sales > 0).length}道`);
+
+  console.log('\n发送 API 请求...');
+
+  try {
+    const startTime = Date.now();
+    const response = await axios.post(
+      apiUrl,
+      {
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+        stream: false
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        timeout: 60000
+      }
+    );
+
+    const duration = Date.now() - startTime;
+    const content = response.data.choices[0].message.content;
+    const tokensUsed = response.data.usage?.total_tokens || 0;
+
+    console.log(`\n[成功] API 请求成功 (耗时: ${duration}ms)`);
+    console.log(`Token 使用情况: ${tokensUsed}`);
+    console.log(`\n生成内容预览:`);
+    console.log(`  ${content.substring(0, 200)}...`);
+
+    // 解析 JSON 响应
+    let result;
+    try {
+      const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
+      const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
+      result = JSON.parse(jsonStr);
+    } catch (parseError) {
+      console.error('[警告] JSON 解析失败，使用备用方案');
+      result = generateFallbackPurchasePlan(dishes);
+    }
+
+    console.log(`\n生成了 ${result.items?.length || 0} 项采购项目`);
+    console.log('========================================\n');
+
+    return {
+      items: result.items || [],
+      notes: result.notes || '',
+      tokensUsed,
+      model
+    };
+  } catch (error) {
+    const errorMsg = error.response?.data || error.message;
+    console.error(`\n[失败] API 请求失败:`);
+    console.error(`  错误信息: ${JSON.stringify(errorMsg, null, 2)}`);
+    console.log('========================================\n');
+    
+    // 返回备用采购计划
+    return generateFallbackPurchasePlan(dishes);
+  }
+}
+
+/**
+ * 生成备用采购计划（当 API 调用失败时使用）
+ */
+function generateFallbackPurchasePlan(dishes) {
+  const items = [];
+  
+  // 按销量排序，取前5道热销菜品
+  const hotDishes = [...dishes]
+    .filter(d => d.sales > 0)
+    .sort((a, b) => b.sales - a.sales)
+    .slice(0, 5);
+
+  // 为每道热销菜品生成采购项
+  hotDishes.forEach(dish => {
+    // 根据菜品名称推测主要食材
+    const ingredients = extractIngredients(dish.name);
+    ingredients.forEach(ingredient => {
+      // 计算采购量：销量 * 1.2（预留20%安全库存）
+      const quantity = Math.ceil(dish.sales * 1.2 / 7 * 2); // 预估2天用量
+      items.push({
+        name: ingredient.name,
+        quantity: quantity.toString(),
+        unit: ingredient.unit,
+        reason: `${dish.name}主料，近7天销量${dish.sales}份`
+      });
+    });
+  });
+
+  // 去重合并相同食材
+  const mergedItems = [];
+  const itemMap = new Map();
+  
+  items.forEach(item => {
+    const key = `${item.name}_${item.unit}`;
+    if (itemMap.has(key)) {
+      const existing = itemMap.get(key);
+      existing.quantity = (parseInt(existing.quantity) + parseInt(item.quantity)).toString();
+    } else {
+      itemMap.set(key, { ...item });
+    }
+  });
+  
+  itemMap.forEach(item => mergedItems.push(item));
+
+  return {
+    items: mergedItems.slice(0, 10), // 最多10项
+    notes: '根据近期销售数据自动生成，请根据实际情况调整采购量。建议提前联系供应商确认食材新鲜度和价格。',
+    tokensUsed: 0,
+    model: 'fallback'
+  };
+}
+
+/**
+ * 从菜品名称中提取可能的食材
+ */
+function extractIngredients(dishName) {
+  const ingredientMap = {
+    '鸡': [{ name: '鸡肉', unit: '斤' }],
+    '牛': [{ name: '牛肉', unit: '斤' }],
+    '猪': [{ name: '猪肉', unit: '斤' }],
+    '鱼': [{ name: '鱼', unit: '条' }],
+    '虾': [{ name: '虾仁', unit: '斤' }],
+    '豆腐': [{ name: '豆腐', unit: '块' }],
+    '白菜': [{ name: '白菜', unit: '斤' }],
+    '萝卜': [{ name: '萝卜', unit: '斤' }],
+    '土豆': [{ name: '土豆', unit: '斤' }],
+    '西红柿': [{ name: '西红柿', unit: '斤' }],
+    '番茄': [{ name: '番茄', unit: '斤' }],
+    '茄子': [{ name: '茄子', unit: '斤' }],
+    '青椒': [{ name: '青椒', unit: '斤' }],
+    '胡萝卜': [{ name: '胡萝卜', unit: '斤' }],
+    '菠菜': [{ name: '菠菜', unit: '斤' }],
+    '芹菜': [{ name: '芹菜', unit: '斤' }],
+    '蘑菇': [{ name: '蘑菇', unit: '斤' }],
+    '香菇': [{ name: '香菇', unit: '斤' }],
+    '木耳': [{ name: '木耳', unit: '斤' }],
+    '鸡蛋': [{ name: '鸡蛋', unit: '个' }],
+    '蛋': [{ name: '鸡蛋', unit: '个' }]
+  };
+
+  const ingredients = [];
+  for (const [key, value] of Object.entries(ingredientMap)) {
+    if (dishName.includes(key)) {
+      ingredients.push(...value);
+    }
+  }
+
+  // 如果没有匹配到，返回通用食材
+  if (ingredients.length === 0) {
+    ingredients.push({ name: '食材', unit: '份' });
+  }
+
+  return ingredients;
+}
+
 module.exports = {
   generateDietAnalysis,
   generateSeasonalDishes,
   generateDishImage,
   generateHealthSuggestion,
-  generateSmartRecommendation
+  generateSmartRecommendation,
+  generatePurchasePlan
 };
 
 /**
