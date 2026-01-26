@@ -8,55 +8,57 @@
     </div>
 
     <!-- 营养对比图表 -->
-    <div class="card">
-      <div class="muted">今日营养摄入</div>
+    <div class="card nutrition-card">
+      <h3 class="card-title">今日营养摄入</h3>
       
       <!-- 雷达图 -->
       <div class="radar-container">
-        <svg class="radar-chart" viewBox="0 0 400 400">
+        <svg class="radar-chart" viewBox="0 0 500 500">
           <!-- 背景网格 -->
           <g class="radar-grid">
-            <!-- 5层同心五边形 -->
+            <!-- 5层同心八边形 -->
             <polygon v-for="level in 5" :key="level"
-              :points="getPolygonPoints(200, 200, 180 * (level / 5))"
+              :points="getPolygonPoints(250, 250, 200 * (level / 5))"
               fill="none"
               stroke="#e5e7eb"
-              stroke-width="1"
+              stroke-width="1.5"
+              opacity="0.5"
             />
             <!-- 从中心到各顶点的线 -->
             <line v-for="(item, index) in nutritionItems" :key="'line-' + index"
-              x1="200" y1="200"
-              :x2="getRadarPoint(200, 200, 180, index, 5).x"
-              :y2="getRadarPoint(200, 200, 180, index, 5).y"
+              x1="250" y1="250"
+              :x2="getRadarPoint(250, 250, 200, index, nutritionItems.length).x"
+              :y2="getRadarPoint(250, 250, 200, index, nutritionItems.length).y"
               stroke="#e5e7eb"
               stroke-width="1"
+              opacity="0.5"
             />
           </g>
           
           <!-- 推荐范围区域（最大值） -->
           <polygon
-            :points="getRadarPolygon(200, 200, 180, nutritionItems, 'max')"
+            :points="getRadarPolygon(250, 250, 200, nutritionItems, 'max')"
             fill="#1f9c7a"
-            fill-opacity="0.1"
+            fill-opacity="0.08"
             stroke="#1f9c7a"
             stroke-width="2"
-            stroke-dasharray="5,5"
+            stroke-dasharray="6,4"
           />
           
           <!-- 实际摄入区域 -->
           <polygon
-            :points="getRadarPolygon(200, 200, 180, nutritionItems, 'actual')"
+            :points="getRadarPolygon(250, 250, 200, nutritionItems, 'actual')"
             :fill="getOverallColor()"
-            fill-opacity="0.3"
+            fill-opacity="0.25"
             :stroke="getOverallColor()"
             stroke-width="3"
           />
           
           <!-- 实际摄入的点 -->
           <circle v-for="(item, index) in nutritionItems" :key="'point-' + index"
-            :cx="getRadarPoint(200, 200, 180, index, 5, parseFloat(item.actual) / item.max).x"
-            :cy="getRadarPoint(200, 200, 180, index, 5, parseFloat(item.actual) / item.max).y"
-            r="6"
+            :cx="getRadarPoint(250, 250, 200, index, nutritionItems.length, parseFloat(item.actual) / item.max).x"
+            :cy="getRadarPoint(250, 250, 200, index, nutritionItems.length, parseFloat(item.actual) / item.max).y"
+            r="5"
             :fill="getProgressColor(item)"
             stroke="white"
             stroke-width="2"
@@ -65,15 +67,15 @@
           <!-- 标签 -->
           <g v-for="(item, index) in nutritionItems" :key="'label-' + index" class="radar-label">
             <text
-              :x="getRadarPoint(200, 200, 210, index, 5).x"
-              :y="getRadarPoint(200, 200, 210, index, 5).y"
+              :x="getRadarPoint(250, 250, 230, index, nutritionItems.length).x"
+              :y="getRadarPoint(250, 250, 230, index, nutritionItems.length).y"
               text-anchor="middle"
               dominant-baseline="middle"
               class="label-name"
             >{{ item.name }}</text>
             <text
-              :x="getRadarPoint(200, 200, 230, index, 5).x"
-              :y="getRadarPoint(200, 200, 230, index, 5).y"
+              :x="getRadarPoint(250, 250, 250, index, nutritionItems.length).x"
+              :y="getRadarPoint(250, 250, 250, index, nutritionItems.length).y"
               text-anchor="middle"
               dominant-baseline="middle"
               class="label-value"
@@ -86,11 +88,11 @@
       <!-- 图例说明 -->
       <div class="nutrition-legend">
         <div class="legend-item">
-          <div class="legend-dot" style="background: #1f9c7a; opacity: 0.3;"></div>
+          <div class="legend-line legend-recommended"></div>
           <span>推荐范围</span>
         </div>
         <div class="legend-item">
-          <div class="legend-dot" :style="{ background: getOverallColor() }"></div>
+          <div class="legend-line legend-actual" :style="{ background: getOverallColor() }"></div>
           <span>实际摄入</span>
         </div>
       </div>
@@ -101,6 +103,7 @@
           <span class="detail-name">{{ item.name }}</span>
           <span class="detail-value">
             <strong :style="{ color: getProgressColor(item) }">{{ item.actual }}</strong>
+            <span class="detail-unit">{{ item.unit }}</span>
             <span class="detail-range">/ {{ item.recommended }}</span>
           </span>
           <span class="detail-status" :style="{ color: getProgressColor(item) }">
@@ -173,7 +176,10 @@ const nutritionRecommendations = {
   protein: { min: 60, max: 100, unit: 'g' },
   fat: { min: 40, max: 70, unit: 'g' },
   carbs: { min: 200, max: 350, unit: 'g' },
-  fiber: { min: 25, max: 35, unit: 'g' }
+  fiber: { min: 25, max: 35, unit: 'g' },
+  calcium: { min: 800, max: 1200, unit: 'mg' },
+  vitaminC: { min: 80, max: 120, unit: 'mg' },
+  iron: { min: 12, max: 20, unit: 'mg' }
 }
 
 const nutritionItems = computed(() => [
@@ -182,35 +188,64 @@ const nutritionItems = computed(() => [
     actual: todayNutrition.value.calories,
     recommended: '1500-2500 kcal',
     min: 1500,
-    max: 2500
+    max: 2500,
+    unit: 'kcal'
   },
   {
     name: '蛋白质',
     actual: todayNutrition.value.protein.toFixed(1),
     recommended: '60-100 g',
     min: 60,
-    max: 100
+    max: 100,
+    unit: 'g'
   },
   {
     name: '脂肪',
     actual: todayNutrition.value.fat.toFixed(1),
     recommended: '40-70 g',
     min: 40,
-    max: 70
+    max: 70,
+    unit: 'g'
   },
   {
     name: '碳水',
     actual: todayNutrition.value.carbs.toFixed(1),
     recommended: '200-350 g',
     min: 200,
-    max: 350
+    max: 350,
+    unit: 'g'
   },
   {
     name: '膳食纤维',
     actual: todayNutrition.value.fiber.toFixed(1),
     recommended: '25-35 g',
     min: 25,
-    max: 35
+    max: 35,
+    unit: 'g'
+  },
+  {
+    name: '钙',
+    actual: todayNutrition.value.calcium.toFixed(1),
+    recommended: '800-1200 mg',
+    min: 800,
+    max: 1200,
+    unit: 'mg'
+  },
+  {
+    name: '维生素C',
+    actual: todayNutrition.value.vitaminC.toFixed(1),
+    recommended: '80-120 mg',
+    min: 80,
+    max: 120,
+    unit: 'mg'
+  },
+  {
+    name: '铁',
+    actual: todayNutrition.value.iron.toFixed(1),
+    recommended: '12-20 mg',
+    min: 12,
+    max: 20,
+    unit: 'mg'
   }
 ])
 
@@ -347,8 +382,9 @@ const getRadarPoint = (cx, cy, radius, index, total, ratio = 1) => {
 
 const getPolygonPoints = (cx, cy, radius) => {
   const points = []
-  for (let i = 0; i < 5; i++) {
-    const point = getRadarPoint(cx, cy, radius, i, 5)
+  const count = nutritionItems.value.length
+  for (let i = 0; i < count; i++) {
+    const point = getRadarPoint(cx, cy, radius, i, count)
     points.push(`${point.x},${point.y}`)
   }
   return points.join(' ')
@@ -364,7 +400,7 @@ const getRadarPolygon = (cx, cy, radius, items, type) => {
       const actual = parseFloat(item.actual)
       ratio = Math.min(actual / item.max, 1.5) // 最多显示到150%
     }
-    const point = getRadarPoint(cx, cy, radius, index, 5, ratio)
+    const point = getRadarPoint(cx, cy, radius, index, items.length, ratio)
     points.push(`${point.x},${point.y}`)
   })
   return points.join(' ')
@@ -570,64 +606,96 @@ onUnmounted(() => {
   gap: 16px;
 }
 
+.nutrition-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--border);
+}
+
 .radar-container {
   margin: 20px auto;
-  max-width: 400px;
+  max-width: 500px;
   width: 100%;
+  padding: 20px 0;
 }
 
 .radar-chart {
   width: 100%;
   height: auto;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.05));
 }
 
 .radar-label .label-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   fill: var(--text);
 }
 
 .radar-label .label-value {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
 }
 
 .nutrition-legend {
   display: flex;
   justify-content: center;
-  gap: 24px;
-  margin: 16px 0;
-  padding: 12px;
+  gap: 32px;
+  margin: 20px 0;
+  padding: 14px;
   background: var(--surface-soft);
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 14px;
   color: var(--text);
+  font-weight: 500;
 }
 
-.legend-dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
+.legend-line {
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.legend-recommended {
+  background: #1f9c7a;
+  opacity: 0.5;
+  border: 1px dashed #1f9c7a;
+}
+
+.legend-actual {
+  border-radius: 2px;
 }
 
 .nutrition-details {
-  margin-top: 20px;
-  border-top: 1px solid var(--border);
-  padding-top: 16px;
+  margin-top: 24px;
+  border-top: 2px solid var(--border);
+  padding-top: 20px;
 }
 
 .detail-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 0;
+  padding: 12px 8px;
   border-bottom: 1px solid var(--surface-soft);
+  transition: background 0.2s;
+}
+
+.detail-row:hover {
+  background: var(--surface-soft);
+  border-radius: 6px;
 }
 
 .detail-row:last-child {
@@ -638,7 +706,7 @@ onUnmounted(() => {
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
-  flex: 0 0 80px;
+  flex: 0 0 90px;
 }
 
 .detail-value {
@@ -649,13 +717,20 @@ onUnmounted(() => {
 }
 
 .detail-value strong {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
+}
+
+.detail-unit {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 2px;
 }
 
 .detail-range {
   color: var(--muted);
-  margin-left: 4px;
+  margin-left: 6px;
+  font-size: 13px;
 }
 
 .detail-status {
