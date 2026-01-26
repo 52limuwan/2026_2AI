@@ -1,8 +1,8 @@
 <template>
   <div class="card-list">
     <!-- 简化的健康提示 -->
-    <div class="card health-summary">
-      <div class="health-icon">✓</div>
+    <div class="card health-summary" :class="healthStatusClass">
+      <div class="health-icon" :class="healthIconClass">{{ healthIcon }}</div>
       <h2>{{ healthSummary }}</h2>
       <p class="muted">{{ healthTipDisplay }}</p>
     </div>
@@ -10,18 +10,102 @@
     <!-- 营养对比图表 -->
     <div class="card">
       <div class="muted">今日营养摄入</div>
-      <div class="nutrition-comparison">
-        <div v-for="item in nutritionItems" :key="item.name" class="nutrition-item">
-          <div class="nutrition-header">
-            <span class="nutrition-name">{{ item.name }}</span>
-            <span class="nutrition-value">{{ item.actual }} / {{ item.recommended }}</span>
-          </div>
-          <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: getProgressWidth(item) + '%', background: getProgressColor(item) }"></div>
-          </div>
-          <div class="nutrition-status" :style="{ color: getProgressColor(item) }">
+      
+      <!-- 雷达图 -->
+      <div class="radar-container">
+        <svg class="radar-chart" viewBox="0 0 400 400">
+          <!-- 背景网格 -->
+          <g class="radar-grid">
+            <!-- 5层同心五边形 -->
+            <polygon v-for="level in 5" :key="level"
+              :points="getPolygonPoints(200, 200, 180 * (level / 5))"
+              fill="none"
+              stroke="#e5e7eb"
+              stroke-width="1"
+            />
+            <!-- 从中心到各顶点的线 -->
+            <line v-for="(item, index) in nutritionItems" :key="'line-' + index"
+              x1="200" y1="200"
+              :x2="getRadarPoint(200, 200, 180, index, 5).x"
+              :y2="getRadarPoint(200, 200, 180, index, 5).y"
+              stroke="#e5e7eb"
+              stroke-width="1"
+            />
+          </g>
+          
+          <!-- 推荐范围区域（最大值） -->
+          <polygon
+            :points="getRadarPolygon(200, 200, 180, nutritionItems, 'max')"
+            fill="#1f9c7a"
+            fill-opacity="0.1"
+            stroke="#1f9c7a"
+            stroke-width="2"
+            stroke-dasharray="5,5"
+          />
+          
+          <!-- 实际摄入区域 -->
+          <polygon
+            :points="getRadarPolygon(200, 200, 180, nutritionItems, 'actual')"
+            :fill="getOverallColor()"
+            fill-opacity="0.3"
+            :stroke="getOverallColor()"
+            stroke-width="3"
+          />
+          
+          <!-- 实际摄入的点 -->
+          <circle v-for="(item, index) in nutritionItems" :key="'point-' + index"
+            :cx="getRadarPoint(200, 200, 180, index, 5, parseFloat(item.actual) / item.max).x"
+            :cy="getRadarPoint(200, 200, 180, index, 5, parseFloat(item.actual) / item.max).y"
+            r="6"
+            :fill="getProgressColor(item)"
+            stroke="white"
+            stroke-width="2"
+          />
+          
+          <!-- 标签 -->
+          <g v-for="(item, index) in nutritionItems" :key="'label-' + index" class="radar-label">
+            <text
+              :x="getRadarPoint(200, 200, 210, index, 5).x"
+              :y="getRadarPoint(200, 200, 210, index, 5).y"
+              text-anchor="middle"
+              dominant-baseline="middle"
+              class="label-name"
+            >{{ item.name }}</text>
+            <text
+              :x="getRadarPoint(200, 200, 230, index, 5).x"
+              :y="getRadarPoint(200, 200, 230, index, 5).y"
+              text-anchor="middle"
+              dominant-baseline="middle"
+              class="label-value"
+              :fill="getProgressColor(item)"
+            >{{ formatActualValue(item.actual) }}</text>
+          </g>
+        </svg>
+      </div>
+      
+      <!-- 图例说明 -->
+      <div class="nutrition-legend">
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #1f9c7a; opacity: 0.3;"></div>
+          <span>推荐范围</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" :style="{ background: getOverallColor() }"></div>
+          <span>实际摄入</span>
+        </div>
+      </div>
+      
+      <!-- 详细数据列表 -->
+      <div class="nutrition-details">
+        <div v-for="item in nutritionItems" :key="item.name" class="detail-row">
+          <span class="detail-name">{{ item.name }}</span>
+          <span class="detail-value">
+            <strong :style="{ color: getProgressColor(item) }">{{ item.actual }}</strong>
+            <span class="detail-range">/ {{ item.recommended }}</span>
+          </span>
+          <span class="detail-status" :style="{ color: getProgressColor(item) }">
             {{ getStatusText(item) }}
-          </div>
+          </span>
         </div>
       </div>
     </div>
@@ -137,23 +221,165 @@ const healthSummary = computed(() => {
     return actual >= item.min && actual <= item.max
   }).length
   
-  if (goodCount >= 4) return '本周饮食良好'
-  if (goodCount >= 2) return '饮食基本均衡'
-  return '需要改善饮食'
+  if (goodCount >= 4) return '饮食状况良好'
+  if (goodCount >= 2) return '饮食需要注意'
+  return '饮食需要改善'
+})
+
+const healthIcon = computed(() => {
+  const items = nutritionItems.value
+  const goodCount = items.filter(item => {
+    const actual = parseFloat(item.actual)
+    return actual >= item.min && actual <= item.max
+  }).length
+  
+  if (goodCount >= 4) return '✓'
+  if (goodCount >= 2) return '!'
+  return '✕'
+})
+
+const healthIconClass = computed(() => {
+  const items = nutritionItems.value
+  const goodCount = items.filter(item => {
+    const actual = parseFloat(item.actual)
+    return actual >= item.min && actual <= item.max
+  }).length
+  
+  if (goodCount >= 4) return 'icon-good'
+  if (goodCount >= 2) return 'icon-warning'
+  return 'icon-bad'
+})
+
+const healthStatusClass = computed(() => {
+  const items = nutritionItems.value
+  const goodCount = items.filter(item => {
+    const actual = parseFloat(item.actual)
+    return actual >= item.min && actual <= item.max
+  }).length
+  
+  if (goodCount >= 4) return 'status-good'
+  if (goodCount >= 2) return 'status-warning'
+  return 'status-bad'
 })
 
 const recentOrders = computed(() => orders.value.slice(0, 3))
+
 const healthTipDisplay = computed(() => {
   if (orders.value.length === 0) {
     return '暂无订单数据'
   }
-  return healthTip.value || '保持低盐饮食，多吃蔬菜水果'
+  
+  // 如果有后端返回的建议，优先使用
+  if (healthTip.value) {
+    return healthTip.value
+  }
+  
+  // 根据营养摄入情况生成建议
+  const items = nutritionItems.value
+  const lowItems = items.filter(item => parseFloat(item.actual) < item.min)
+  const highItems = items.filter(item => parseFloat(item.actual) > item.max)
+  
+  if (lowItems.length === 0 && highItems.length === 0) {
+    return '营养摄入均衡，继续保持良好的饮食习惯'
+  }
+  
+  const tips = []
+  
+  if (lowItems.length > 0) {
+    const lowNames = lowItems.map(item => item.name).join('、')
+    if (lowItems.some(item => item.name === '蛋白质')) {
+      tips.push('建议增加鱼肉、鸡蛋、豆制品等优质蛋白')
+    }
+    if (lowItems.some(item => item.name === '膳食纤维')) {
+      tips.push('多吃蔬菜水果和全谷物')
+    }
+    if (lowItems.some(item => item.name === '热量')) {
+      tips.push('适当增加主食和优质蛋白摄入')
+    }
+  }
+  
+  if (highItems.length > 0) {
+    if (highItems.some(item => item.name === '脂肪')) {
+      tips.push('减少油炸食品和高脂肪食物')
+    }
+    if (highItems.some(item => item.name === '碳水')) {
+      tips.push('控制主食和甜食摄入')
+    }
+    if (highItems.some(item => item.name === '热量')) {
+      tips.push('注意控制总热量摄入')
+    }
+  }
+  
+  if (tips.length > 0) {
+    return tips.join('，')
+  }
+  
+  return '保持低盐饮食，多吃蔬菜水果'
 })
 
 const getProgressWidth = (item) => {
   const actual = parseFloat(item.actual)
   const percentage = (actual / item.max) * 100
   return Math.min(percentage, 100)
+}
+
+const formatActualValue = (value) => {
+  const num = parseFloat(value)
+  if (num >= 1000) {
+    return Math.round(num)
+  }
+  return num.toFixed(1)
+}
+
+const getUnit = (item) => {
+  if (item.name === '热量') return 'kcal'
+  return 'g'
+}
+
+// 雷达图相关函数
+const getRadarPoint = (cx, cy, radius, index, total, ratio = 1) => {
+  const angle = (Math.PI * 2 * index) / total - Math.PI / 2
+  return {
+    x: cx + radius * ratio * Math.cos(angle),
+    y: cy + radius * ratio * Math.sin(angle)
+  }
+}
+
+const getPolygonPoints = (cx, cy, radius) => {
+  const points = []
+  for (let i = 0; i < 5; i++) {
+    const point = getRadarPoint(cx, cy, radius, i, 5)
+    points.push(`${point.x},${point.y}`)
+  }
+  return points.join(' ')
+}
+
+const getRadarPolygon = (cx, cy, radius, items, type) => {
+  const points = []
+  items.forEach((item, index) => {
+    let ratio = 0
+    if (type === 'max') {
+      ratio = 1 // 推荐最大值就是100%
+    } else if (type === 'actual') {
+      const actual = parseFloat(item.actual)
+      ratio = Math.min(actual / item.max, 1.5) // 最多显示到150%
+    }
+    const point = getRadarPoint(cx, cy, radius, index, 5, ratio)
+    points.push(`${point.x},${point.y}`)
+  })
+  return points.join(' ')
+}
+
+const getOverallColor = () => {
+  const items = nutritionItems.value
+  const goodCount = items.filter(item => {
+    const actual = parseFloat(item.actual)
+    return actual >= item.min && actual <= item.max
+  }).length
+  
+  if (goodCount >= 4) return '#1f9c7a' // 绿色 - 良好
+  if (goodCount >= 2) return '#f59e0b' // 橙色 - 一般
+  return '#ef4444' // 红色 - 需改善
 }
 
 const getProgressColor = (item) => {
@@ -284,19 +510,51 @@ onUnmounted(() => {
 .health-summary {
   text-align: center;
   padding: 24px;
+  transition: all 0.3s ease;
+}
+
+.health-summary.status-good {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border: 2px solid #86efac;
+}
+
+.health-summary.status-warning {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 2px solid #fcd34d;
+}
+
+.health-summary.status-bad {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 2px solid #fca5a5;
 }
 
 .health-icon {
   width: 60px;
   height: 60px;
   margin: 0 auto 16px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 32px;
   color: white;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.health-icon.icon-good {
+  background: linear-gradient(135deg, #1f9c7a, #16a34a);
+  box-shadow: 0 4px 12px rgba(31, 156, 122, 0.3);
+}
+
+.health-icon.icon-warning {
+  background: linear-gradient(135deg, #f59e0b, #eab308);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.health-icon.icon-bad {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 .health-summary h2 {
@@ -312,10 +570,99 @@ onUnmounted(() => {
   gap: 16px;
 }
 
-.nutrition-item {
+.radar-container {
+  margin: 20px auto;
+  max-width: 400px;
+  width: 100%;
+}
+
+.radar-chart {
+  width: 100%;
+  height: auto;
+}
+
+.radar-label .label-name {
+  font-size: 14px;
+  font-weight: 600;
+  fill: var(--text);
+}
+
+.radar-label .label-value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.nutrition-legend {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  justify-content: center;
+  gap: 24px;
+  margin: 16px 0;
+  padding: 12px;
+  background: var(--surface-soft);
+  border-radius: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.legend-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.nutrition-details {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--surface-soft);
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 0 0 80px;
+}
+
+.detail-value {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text);
+  text-align: center;
+}
+
+.detail-value strong {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.detail-range {
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.detail-status {
+  font-size: 14px;
+  font-weight: 600;
+  flex: 0 0 60px;
+  text-align: right;
 }
 
 .nutrition-header {
