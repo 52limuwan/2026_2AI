@@ -36,24 +36,53 @@
         </div>
       </div>
 
-      <!-- 热量趋势 -->
-      <div class="trend-section">
-        <h3 class="section-title">热量趋势</h3>
-        <div class="simple-chart">
-          <div class="chart-bars">
-            <div
-              v-for="(v, idx) in monthly.calories || []"
-              :key="idx"
-              class="chart-bar"
-              :style="{ height: barHeight(v, monthly.calories) }"
-            >
-              <div class="bar-value" v-if="idx % 5 === 0">{{ Math.round(v) }}</div>
+      <!-- 综合营养评分 -->
+      <div class="score-section">
+        <h3 class="section-title">综合营养评分</h3>
+        <div class="score-display">
+          <div class="score-circle">
+            <svg viewBox="0 0 200 200" class="score-svg">
+              <circle cx="100" cy="100" r="85" class="score-bg-circle" />
+              <circle 
+                cx="100" 
+                cy="100" 
+                r="85" 
+                class="score-progress-circle"
+                :style="{ strokeDashoffset: monthlyScoreOffset }"
+              />
+            </svg>
+            <div class="score-content">
+              <div class="score-number">{{ monthlyScore.total }}</div>
+              <div class="score-label">{{ monthlyScore.level }}</div>
             </div>
           </div>
-          <div class="chart-axis">
-            <span v-for="(d, idx) in monthlyDaysDisplay" :key="idx" class="axis-label">{{ d }}</span>
+          <div class="score-breakdown">
+            <div class="breakdown-item" v-for="item in monthlyScore.breakdown" :key="item.name">
+              <div class="breakdown-header">
+                <span class="breakdown-name">{{ item.name }}</span>
+                <span class="breakdown-score">{{ item.score }}/{{ item.max }}</span>
+              </div>
+              <div class="breakdown-bar">
+                <div 
+                  class="breakdown-fill" 
+                  :style="{ width: (item.score / item.max * 100) + '%', background: item.color }"
+                ></div>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
+
+      <!-- 营养雷达图 -->
+      <div class="chart-section">
+        <h3 class="section-title">营养均衡分析</h3>
+        <div ref="monthlyRadarChart" class="echarts-container"></div>
+      </div>
+
+      <!-- 热量趋势 -->
+      <div class="chart-section">
+        <h3 class="section-title">热量趋势</h3>
+        <div ref="monthlyLineChart" class="echarts-container"></div>
       </div>
 
       <!-- AI 分析 -->
@@ -97,24 +126,53 @@
         </div>
       </div>
 
-      <!-- 热量趋势 -->
-      <div class="trend-section">
-        <h3 class="section-title">热量趋势</h3>
-        <div class="simple-chart">
-          <div class="chart-bars">
-            <div
-              v-for="(v, idx) in weekly.calories || []"
-              :key="idx"
-              class="chart-bar"
-              :style="{ height: barHeight(v, weekly.calories) }"
-            >
-              <div class="bar-value">{{ Math.round(v) }}</div>
+      <!-- 综合营养评分 -->
+      <div class="score-section">
+        <h3 class="section-title">综合营养评分</h3>
+        <div class="score-display">
+          <div class="score-circle">
+            <svg viewBox="0 0 200 200" class="score-svg">
+              <circle cx="100" cy="100" r="85" class="score-bg-circle" />
+              <circle 
+                cx="100" 
+                cy="100" 
+                r="85" 
+                class="score-progress-circle"
+                :style="{ strokeDashoffset: weeklyScoreOffset }"
+              />
+            </svg>
+            <div class="score-content">
+              <div class="score-number">{{ weeklyScore.total }}</div>
+              <div class="score-label">{{ weeklyScore.level }}</div>
             </div>
           </div>
-          <div class="chart-axis">
-            <span v-for="(d, idx) in weekly.days || []" :key="idx" class="axis-label">{{ d.slice(5) }}</span>
+          <div class="score-breakdown">
+            <div class="breakdown-item" v-for="item in weeklyScore.breakdown" :key="item.name">
+              <div class="breakdown-header">
+                <span class="breakdown-name">{{ item.name }}</span>
+                <span class="breakdown-score">{{ item.score }}/{{ item.max }}</span>
+              </div>
+              <div class="breakdown-bar">
+                <div 
+                  class="breakdown-fill" 
+                  :style="{ width: (item.score / item.max * 100) + '%', background: item.color }"
+                ></div>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
+
+      <!-- 营养雷达图 -->
+      <div class="chart-section">
+        <h3 class="section-title">营养均衡分析</h3>
+        <div ref="weeklyRadarChart" class="echarts-container"></div>
+      </div>
+
+      <!-- 热量趋势 -->
+      <div class="chart-section">
+        <h3 class="section-title">热量趋势</h3>
+        <div ref="weeklyLineChart" class="echarts-container"></div>
       </div>
 
       <!-- AI 分析 -->
@@ -149,8 +207,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { marked } from 'marked'
+import * as echarts from 'echarts'
 import { getWeeklyReport, getMonthlyReport, generateWeeklyAiAnalysis, generateMonthlyAiAnalysis, getAiDietReports } from '../../api/client'
 import { useRouter } from 'vue-router'
 
@@ -158,6 +217,18 @@ const router = useRouter()
 const weekly = ref(null)
 const monthly = ref(null)
 const activeTab = ref('weekly')
+
+// 图表 refs
+const weeklyRadarChart = ref(null)
+const weeklyLineChart = ref(null)
+const monthlyRadarChart = ref(null)
+const monthlyLineChart = ref(null)
+
+// 图表实例
+let weeklyRadarInstance = null
+let weeklyLineInstance = null
+let monthlyRadarInstance = null
+let monthlyLineInstance = null
 
 // AI分析相关状态
 const weeklyAiAnalysis = ref('')
@@ -183,7 +254,241 @@ const loadReports = async () => {
 
 onMounted(async () => {
   await loadReports()
+  await nextTick()
+  initCharts()
 })
+
+// 监听 activeTab 变化，重新渲染图表
+watch(activeTab, async () => {
+  await nextTick()
+  initCharts()
+})
+
+// 监听数据变化，重新渲染图表
+watch([weekly, monthly], async () => {
+  await nextTick()
+  initCharts()
+})
+
+// 初始化图表
+const initCharts = () => {
+  if (activeTab.value === 'weekly' && weekly.value) {
+    initWeeklyCharts()
+  } else if (activeTab.value === 'monthly' && monthly.value) {
+    initMonthlyCharts()
+  }
+}
+
+// 初始化周报图表
+const initWeeklyCharts = () => {
+  if (weeklyRadarChart.value) {
+    if (!weeklyRadarInstance) {
+      weeklyRadarInstance = echarts.init(weeklyRadarChart.value)
+    }
+    weeklyRadarInstance.setOption(getWeeklyRadarOption())
+  }
+  
+  if (weeklyLineChart.value) {
+    if (!weeklyLineInstance) {
+      weeklyLineInstance = echarts.init(weeklyLineChart.value)
+    }
+    weeklyLineInstance.setOption(getWeeklyLineOption())
+  }
+}
+
+// 初始化月报图表
+const initMonthlyCharts = () => {
+  if (monthlyRadarChart.value) {
+    if (!monthlyRadarInstance) {
+      monthlyRadarInstance = echarts.init(monthlyRadarChart.value)
+    }
+    monthlyRadarInstance.setOption(getMonthlyRadarOption())
+  }
+  
+  if (monthlyLineChart.value) {
+    if (!monthlyLineInstance) {
+      monthlyLineInstance = echarts.init(monthlyLineChart.value)
+    }
+    monthlyLineInstance.setOption(getMonthlyLineOption())
+  }
+}
+
+// 周报雷达图配置
+const getWeeklyRadarOption = () => {
+  const data = weeklyData.value
+  return {
+    tooltip: {
+      trigger: 'item'
+    },
+    radar: {
+      indicator: [
+        { name: '热量', max: 15000 },
+        { name: '蛋白质', max: 500 },
+        { name: '脂肪', max: 500 },
+        { name: '碳水', max: 2000 },
+        { name: '膳食纤维', max: 200 },
+        { name: '钙', max: 7000 }
+      ],
+      radius: '60%'
+    },
+    series: [{
+      type: 'radar',
+      data: [{
+        value: [
+          data.totalCalories,
+          data.totalProtein,
+          data.totalFat,
+          data.totalCarbs,
+          data.totalFiber,
+          data.totalCalcium
+        ],
+        name: '本周营养摄入',
+        areaStyle: {
+          color: 'rgba(31, 156, 122, 0.3)'
+        },
+        lineStyle: {
+          color: '#1f9c7a'
+        },
+        itemStyle: {
+          color: '#1f9c7a'
+        }
+      }]
+    }]
+  }
+}
+
+// 周报折线图配置
+const getWeeklyLineOption = () => {
+  return {
+    tooltip: {
+      trigger: 'axis'
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: (weekly.value.days || []).map(d => d.slice(5)),
+      boundaryGap: false
+    },
+    yAxis: {
+      type: 'value',
+      name: '热量 (kcal)'
+    },
+    series: [{
+      name: '热量',
+      type: 'line',
+      data: weekly.value.calories || [],
+      smooth: true,
+      lineStyle: {
+        color: '#1f9c7a',
+        width: 3
+      },
+      itemStyle: {
+        color: '#1f9c7a'
+      },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(31, 156, 122, 0.3)' },
+          { offset: 1, color: 'rgba(31, 156, 122, 0.05)' }
+        ])
+      }
+    }]
+  }
+}
+
+// 月报雷达图配置
+const getMonthlyRadarOption = () => {
+  const data = monthlyData.value
+  return {
+    tooltip: {
+      trigger: 'item'
+    },
+    radar: {
+      indicator: [
+        { name: '热量', max: 60000 },
+        { name: '蛋白质', max: 2000 },
+        { name: '脂肪', max: 2000 },
+        { name: '碳水', max: 8000 },
+        { name: '膳食纤维', max: 800 },
+        { name: '钙', max: 30000 }
+      ],
+      radius: '60%'
+    },
+    series: [{
+      type: 'radar',
+      data: [{
+        value: [
+          data.totalCalories,
+          data.totalProtein,
+          data.totalFat,
+          data.totalCarbs,
+          data.totalFiber,
+          data.totalCalcium
+        ],
+        name: '本月营养摄入',
+        areaStyle: {
+          color: 'rgba(31, 156, 122, 0.3)'
+        },
+        lineStyle: {
+          color: '#1f9c7a'
+        },
+        itemStyle: {
+          color: '#1f9c7a'
+        }
+      }]
+    }]
+  }
+}
+
+// 月报折线图配置
+const getMonthlyLineOption = () => {
+  const days = monthly.value.days || []
+  const displayIndices = [0, 5, 10, 15, 20, 25, 29].filter(i => i < days.length)
+  
+  return {
+    tooltip: {
+      trigger: 'axis'
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: displayIndices.map(i => days[i]?.slice(5) || ''),
+      boundaryGap: false
+    },
+    yAxis: {
+      type: 'value',
+      name: '热量 (kcal)'
+    },
+    series: [{
+      name: '热量',
+      type: 'line',
+      data: displayIndices.map(i => monthly.value.calories[i]),
+      smooth: true,
+      lineStyle: {
+        color: '#1f9c7a',
+        width: 3
+      },
+      itemStyle: {
+        color: '#1f9c7a'
+      },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(31, 156, 122, 0.3)' },
+          { offset: 1, color: 'rgba(31, 156, 122, 0.05)' }
+        ])
+      }
+    }]
+  }
+}
 
 const barHeight = (v, arr) => {
   const max = Math.max(...arr, 1)
@@ -301,6 +606,179 @@ const monthlyDaysDisplay = computed(() => {
     if (!dateStr) return ''
     return dateStr.slice(5)
   })
+})
+
+// ==================== 综合营养评分算法 ====================
+
+/**
+ * 计算营养评分
+ * 评分维度：
+ * 1. 热量适宜度 (25分) - 每日热量是否在推荐范围内
+ * 2. 营养均衡度 (25分) - 蛋白质、脂肪、碳水比例是否合理
+ * 3. 微量元素 (20分) - 钙、铁、维生素C等是否充足
+ * 4. 膳食纤维 (15分) - 膳食纤维摄入是否达标
+ * 5. 饮食规律性 (15分) - 每日热量波动是否稳定
+ */
+const calculateNutritionScore = (data, days = 7) => {
+  const summary = data.summary || {}
+  const calories = data.calories || []
+  
+  // 推荐标准（每日）
+  const dailyRecommended = {
+    calories: { min: 1800, max: 2400, optimal: 2100 },
+    protein: { min: 50, max: 80, optimal: 65 },
+    fat: { min: 40, max: 70, optimal: 55 },
+    carbs: { min: 200, max: 350, optimal: 275 },
+    fiber: { min: 20, max: 35, optimal: 25 },
+    calcium: { min: 800, max: 1200, optimal: 1000 },
+    vitaminC: { min: 80, max: 120, optimal: 100 },
+    iron: { min: 12, max: 20, optimal: 15 }
+  }
+  
+  // 计算每日平均值
+  const avgCalories = (summary.calories || 0) / days
+  const avgProtein = (summary.protein || 0) / days
+  const avgFat = (summary.fat || 0) / days
+  const avgCarbs = (summary.carbs || 0) / days
+  const avgFiber = (summary.fiber || 0) / days
+  const avgCalcium = (summary.calcium || 0) / days
+  const avgVitaminC = (summary.vitaminC || 0) / days
+  const avgIron = (summary.iron || 0) / days
+  
+  // 1. 热量适宜度评分 (25分)
+  const calorieScore = calculateRangeScore(avgCalories, dailyRecommended.calories, 25)
+  
+  // 2. 营养均衡度评分 (25分)
+  const proteinScore = calculateRangeScore(avgProtein, dailyRecommended.protein, 8)
+  const fatScore = calculateRangeScore(avgFat, dailyRecommended.fat, 8)
+  const carbsScore = calculateRangeScore(avgCarbs, dailyRecommended.carbs, 9)
+  const balanceScore = proteinScore + fatScore + carbsScore
+  
+  // 3. 微量元素评分 (20分)
+  const calciumScore = calculateRangeScore(avgCalcium, dailyRecommended.calcium, 7)
+  const vitaminCScore = calculateRangeScore(avgVitaminC, dailyRecommended.vitaminC, 7)
+  const ironScore = calculateRangeScore(avgIron, dailyRecommended.iron, 6)
+  const micronutrientScore = calciumScore + vitaminCScore + ironScore
+  
+  // 4. 膳食纤维评分 (15分)
+  const fiberScore = calculateRangeScore(avgFiber, dailyRecommended.fiber, 15)
+  
+  // 5. 饮食规律性评分 (15分)
+  const regularityScore = calculateRegularityScore(calories, 15)
+  
+  // 总分
+  const totalScore = Math.round(calorieScore + balanceScore + micronutrientScore + fiberScore + regularityScore)
+  
+  // 评级
+  let level = '优秀'
+  let levelColor = '#22c55e'
+  if (totalScore < 60) {
+    level = '需改善'
+    levelColor = '#ef4444'
+  } else if (totalScore < 75) {
+    level = '良好'
+    levelColor = '#f59e0b'
+  } else if (totalScore < 90) {
+    level = '优良'
+    levelColor = '#10b981'
+  }
+  
+  return {
+    total: totalScore,
+    level,
+    levelColor,
+    breakdown: [
+      { name: '热量适宜度', score: Math.round(calorieScore), max: 25, color: '#3b82f6' },
+      { name: '营养均衡度', score: Math.round(balanceScore), max: 25, color: '#8b5cf6' },
+      { name: '微量元素', score: Math.round(micronutrientScore), max: 20, color: '#ec4899' },
+      { name: '膳食纤维', score: Math.round(fiberScore), max: 15, color: '#f59e0b' },
+      { name: '饮食规律性', score: Math.round(regularityScore), max: 15, color: '#10b981' }
+    ]
+  }
+}
+
+/**
+ * 计算范围评分
+ * 在最优值附近得满分，偏离越多扣分越多
+ */
+const calculateRangeScore = (value, range, maxScore) => {
+  const { min, max, optimal } = range
+  
+  if (value >= optimal * 0.95 && value <= optimal * 1.05) {
+    // 在最优值±5%范围内，满分
+    return maxScore
+  } else if (value >= min && value <= max) {
+    // 在推荐范围内，根据偏离程度打分
+    const deviation = Math.abs(value - optimal) / optimal
+    return maxScore * (1 - deviation * 0.5)
+  } else if (value < min) {
+    // 低于最小值
+    const ratio = value / min
+    return maxScore * ratio * 0.6
+  } else {
+    // 高于最大值
+    const ratio = max / value
+    return maxScore * ratio * 0.6
+  }
+}
+
+/**
+ * 计算饮食规律性评分
+ * 基于每日热量的标准差，波动越小分数越高
+ */
+const calculateRegularityScore = (calories, maxScore) => {
+  if (!calories || calories.length === 0) return 0
+  
+  const avg = calories.reduce((sum, val) => sum + val, 0) / calories.length
+  const variance = calories.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / calories.length
+  const stdDev = Math.sqrt(variance)
+  
+  // 标准差越小，规律性越好
+  // 标准差在200以内为满分，每增加100扣20%
+  const deviationRatio = stdDev / 200
+  const score = maxScore * Math.max(0, 1 - deviationRatio * 0.2)
+  
+  return score
+}
+
+// 周报评分
+const weeklyScore = computed(() => {
+  if (!weekly.value) {
+    return {
+      total: 0,
+      level: '暂无数据',
+      levelColor: '#9ca3af',
+      breakdown: []
+    }
+  }
+  return calculateNutritionScore(weekly.value, 7)
+})
+
+// 月报评分
+const monthlyScore = computed(() => {
+  if (!monthly.value) {
+    return {
+      total: 0,
+      level: '暂无数据',
+      levelColor: '#9ca3af',
+      breakdown: []
+    }
+  }
+  return calculateNutritionScore(monthly.value, 30)
+})
+
+// 周报评分圆环偏移量
+const weeklyScoreOffset = computed(() => {
+  const circumference = 2 * Math.PI * 85
+  const progress = weeklyScore.value.total / 100
+  return circumference * (1 - progress)
+})
+
+// 月报评分圆环偏移量
+const monthlyScoreOffset = computed(() => {
+  const circumference = 2 * Math.PI * 85
+  const progress = monthlyScore.value.total / 100
+  return circumference * (1 - progress)
 })
 
 // 生成周报AI分析
@@ -477,6 +955,135 @@ const viewHistoryReports = () => {
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 图表区域 - 统一卡片样式 */
+.chart-section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  box-shadow: var(--shadow);
+}
+
+.echarts-container {
+  width: 100%;
+  height: 300px;
+  margin-top: 8px;
+}
+
+/* 评分区域 */
+.score-section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  box-shadow: var(--shadow);
+}
+
+.score-display {
+  display: flex;
+  gap: 20px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+.score-circle {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  flex-shrink: 0;
+}
+
+.score-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.score-bg-circle {
+  fill: none;
+  stroke: var(--ghost-bg);
+  stroke-width: 12;
+}
+
+.score-progress-circle {
+  fill: none;
+  stroke: url(#scoreGradient);
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-dasharray: 534.07;
+  transition: stroke-dashoffset 1s ease;
+}
+
+.score-content {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.score-number {
+  font-size: 42px;
+  font-weight: var(--fw-bold);
+  color: var(--text);
+  line-height: 1;
+  background: linear-gradient(135deg, #1f9c7a, #22c55e);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.score-label {
+  font-size: 14px;
+  font-weight: var(--fw-medium);
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.score-breakdown {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.breakdown-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.breakdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.breakdown-name {
+  font-size: 13px;
+  font-weight: var(--fw-medium);
+  color: var(--text);
+}
+
+.breakdown-score {
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+  color: var(--muted);
+}
+
+.breakdown-bar {
+  height: 8px;
+  background: var(--ghost-bg);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.breakdown-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.8s ease;
 }
 
 /* 趋势图 - 统一卡片样式 */

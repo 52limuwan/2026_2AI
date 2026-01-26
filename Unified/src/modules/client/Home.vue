@@ -133,27 +133,6 @@
           <span>实际摄入</span>
         </div>
       </div>
-      
-      <!-- 详细数据列表 -->
-      <div class="nutrition-details-compact">
-        <div v-for="item in nutritionItems" :key="item.name" class="detail-row-compact">
-          <div class="detail-left">
-            <span class="detail-name-compact">{{ item.name }}</span>
-            <span class="detail-range-compact">{{ item.recommended }}</span>
-          </div>
-          <div class="detail-right">
-            <span class="detail-value-compact" :style="{ color: getProgressColor(item) }">
-              {{ formatActualValue(item.actual) }} {{ item.unit }}
-            </span>
-            <span class="detail-badge-compact" :style="{ 
-              background: getProgressColor(item),
-              color: 'white'
-            }">
-              {{ getStatusText(item) }}
-            </span>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- 最近订单 -->
@@ -883,60 +862,6 @@ onUnmounted(() => {
   background: #10b981;
   opacity: 0.15;
   border: 1px solid #10b981;
-}
-
-.nutrition-details-compact {
-  margin-top: 20px;
-  border-top: 1px solid #e5e7eb;
-  padding-top: 16px;
-}
-
-.detail-row-compact {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #f3f4f6;
-}
-
-.detail-row-compact:last-child {
-  border-bottom: none;
-}
-
-.detail-left {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.detail-name-compact {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.detail-range-compact {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.detail-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-}
-
-.detail-value-compact {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.detail-badge-compact {
-  padding: 3px 10px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
 }
 
 .nutrition-header {

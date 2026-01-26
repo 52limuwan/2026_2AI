@@ -10,7 +10,8 @@
     "migrate": "node src/scripts/migrateFromMongo.js",
     "db:init": "node src/scripts/migrateFromMongo.js --init-only",
     "seed:stores": "node src/scripts/addStoresForMerchant01.js",
-    "test:ai": "node test_ai_service.js"
+    "test:ai": "node test_ai_service.js",
+    "deltoday": "node src/scripts/deltoday.js"
   },
   "keywords": [
     "merchant",
