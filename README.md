@@ -8,16 +8,16 @@
 
 ### 核心特色
 
-- 🤖 **AI智能分析** - DeepSeek-V3驱动的营养分析和健康建议
-- 🏥 **健康风险监测** - 自动检测营养异常并实时预警
-- 📊 **多维度报告** - 周报/月报自动生成，可视化展示
-- 🎯 **个性化推荐** - 基于健康状况的智能菜品推荐
-- 🌿 **节气养生** - 24节气智能菜品生成
-- 👨‍👩‍👧 **多角色协同** - 销售端、监护人、商户、政府四端联动
-- 🔒 **数据安全** - JWT认证、速率限制、输入验证
-- ⏰ **时区统一** - 完全离线的北京时间处理，适配内网环境
+- **AI智能分析** - DeepSeek-V3驱动的营养分析和健康建议
+- **健康风险监测** - 自动检测营养异常并实时预警
+- **多维度报告** - 周报/月报自动生成，可视化展示
+- **个性化推荐** - 基于健康状况的智能菜品推荐
+- **节气养生** - 24节气智能菜品生成
+- **多角色协同** - 销售端、监护人、商户、政府四端联动
+- **数据安全** - JWT认证、速率限制、输入验证
+- **时区统一** - 完全离线的北京时间处理，适配内网环境
 
-## 🏗️ 技术架构
+## 技术架构
 
 ### 后端技术栈
 - **运行环境**: Node.js 18+
@@ -46,7 +46,7 @@
 - **代码规范**: ESLint
 - **版本控制**: Git
 
-## 📁 项目结构
+## 项目结构
 
 ```
 2026_AI2/
@@ -215,7 +215,7 @@
 └── README.md                        # 项目说明文档
 ```
 
-## 🗄️ 数据库设计
+## 数据库设计
 
 ### 核心数据表
 
@@ -633,7 +633,7 @@ CREATE INDEX idx_ai_chat_conversation_id ON ai_chat_messages(conversation_id);
 CREATE INDEX idx_ai_chat_timestamp ON ai_chat_messages(timestamp);
 ```
 
-## 🔌 API接口文档
+## API接口文档
 
 ### 认证接口 (`/api/auth`)
 
@@ -979,7 +979,7 @@ Response:
 }
 ```
 
-## 🤖 AI核心功能
+## AI核心功能
 
 ### 1. AI营养分析报告
 
@@ -1188,7 +1188,7 @@ eventSource.onmessage = (event) => {
 };
 ```
 
-## 🔐 安全机制
+## 安全机制
 
 ### 1. 认证与授权
 
@@ -1324,7 +1324,7 @@ const upload = multer({
 });
 ```
 
-## ⏰ 时区处理机制
+## 时区处理机制
 
 ### 核心原理
 
@@ -1535,7 +1535,7 @@ node Backed/test-offline-timezone.js
 # 预期输出:
 # 系统时间: 2026-01-27T12:50:00.000Z (UTC)
 # 北京时间: 2026-01-27 20:50:00 (UTC+8)
-# ✅ 时区处理正确
+# 时区处理正确
 ```
 
 **健康检查**:
@@ -1554,13 +1554,13 @@ curl http://localhost:8000/health
 
 ### 注意事项
 
-1. ✅ **统一使用工具函数** - 不要直接使用 `new Date()` 或 `Date.now()`
-2. ❌ **避免使用 toISOString()** - ISO字符串是UTC时间，会导致时区混淆
-3. ✅ **数据库查询** - 使用 `DATE()` 函数提取日期部分进行比较
-4. ✅ **定时任务** - 确保定时任务基于北京时间触发
-5. ✅ **前后端一致** - 前后端都使用相同的时区处理逻辑
+1. **统一使用工具函数** - 不要直接使用 `new Date()` 或 `Date.now()`
+2. **避免使用 toISOString()** - ISO字符串是UTC时间，会导致时区混淆
+3. **数据库查询** - 使用 `DATE()` 函数提取日期部分进行比较
+4. **定时任务** - 确保定时任务基于北京时间触发
+5. **前后端一致** - 前后端都使用相同的时区处理逻辑
 
-## 🚨 风险监测系统
+## 风险监测系统
 
 ### 自动风险检测
 
@@ -1711,7 +1711,7 @@ async function sendMealTimeReminders() {
 }
 ```
 
-## 🚀 快速开始
+## 快速开始
 
 ### 环境要求
 
@@ -1878,7 +1878,7 @@ npm run build
 - 商户: `merchant001` / `Password123`
 - 政府: `gov001` / `Password123`
 
-## 📝 开发指南
+## 开发指南
 
 ### 代码规范
 
@@ -1907,13 +1907,13 @@ try {
 
 **数据库查询**:
 ```javascript
-// ✅ 使用参数化查询
+// 推荐：使用参数化查询
 const user = await db.get(
   'SELECT * FROM users WHERE id = :id',
   { id: userId }
 );
 
-// ❌ 避免字符串拼接
+// 避免：字符串拼接
 const user = await db.get(`SELECT * FROM users WHERE id = ${userId}`);
 ```
 
@@ -1950,12 +1950,12 @@ function increment() {
 
 **API调用**:
 ```javascript
-// ✅ 使用封装的API函数
+// 推荐：使用封装的API函数
 import { getOrders } from '@/api/client'
 
 const orders = await getOrders()
 
-// ❌ 避免直接使用axios
+// 避免：直接使用axios
 const response = await axios.get('/api/client/orders')
 ```
 
@@ -2187,7 +2187,7 @@ import { formatDateTime } from '@/utils/dateHelper'
 const time = formatDateTime(date)
 ```
 
-## 📦 生产部署
+## 生产部署
 
 ### Docker部署
 
@@ -2392,18 +2392,18 @@ await sharp(inputPath)
   .toFile(outputPath);
 ```
 
-## 📄 许可证
+## 许可证
 
 MIT License
 
-## 👥 贡献者
+## 贡献者
 
 - 项目负责人: [Your Name]
 - 后端开发: [Developer Name]
 - 前端开发: [Developer Name]
 - UI设计: [Designer Name]
 
-## 📞 联系方式
+## 联系方式
 
 - 项目地址: [GitHub Repository]
 - 问题反馈: [Issues]
