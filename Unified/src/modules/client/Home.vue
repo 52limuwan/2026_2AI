@@ -1,20 +1,26 @@
 <template>
   <div class="card-list">
     <!-- 简化的健康提示 -->
-    <div class="card health-summary" :class="healthStatusClass">
-      <div class="health-icon" :class="healthIconClass">{{ healthIcon }}</div>
-      <h2>{{ healthSummary }}</h2>
-      <p class="muted">{{ healthTipDisplay }}</p>
+    <div v-if="healthScore === null" class="card health-summary-empty">
+      <h3 class="empty-title">今日还未订餐</h3>
+      <p class="empty-desc">开始订餐后，我们将为您分析饮食健康</p>
+    </div>
+    <div v-else class="card health-summary" :style="healthCardStyle">
+      <div class="health-left">
+        <div class="health-score" :style="{ color: getHealthColor(healthScore) }">
+          {{ healthScore }}
+        </div>
+      </div>
+      <div class="health-right">
+        <h3>{{ healthSummary }}</h3>
+        <p class="health-tip">{{ healthTipDisplay }}</p>
+      </div>
     </div>
 
     <!-- 营养对比图表 -->
     <div class="card nutrition-card">
       <div class="nutrition-header">
         <h3 class="card-title">今日营养摄入</h3>
-        <div class="nutrition-status-badge" :class="getOverallStatusClass()">
-          <span class="status-icon">{{ getOverallStatusIcon() }}</span>
-          <span class="status-text">{{ getOverallStatusText() }}</span>
-        </div>
       </div>
       
       <!-- 折线图 -->
@@ -271,107 +277,221 @@ const nutritionItems = computed(() => [
   }
 ])
 
-const healthSummary = computed(() => {
-  const items = nutritionItems.value
-  const goodCount = items.filter(item => {
-    const actual = parseFloat(item.actual)
-    return actual >= item.min && actual <= item.max
-  }).length
+// 健康评分算法（100分制）
+const healthScore = computed(() => {
+  // 检查今日是否有营养数据（即今日是否有订单）
+  const hasData = todayNutrition.value.calories > 0 || 
+                  todayNutrition.value.protein > 0 || 
+                  todayNutrition.value.fat > 0 || 
+                  todayNutrition.value.carbs > 0
   
-  if (goodCount >= 4) return '饮食状况良好'
-  if (goodCount >= 2) return '饮食需要注意'
+  // 如果今日没有营养数据，返回 null 表示无评分
+  if (!hasData) {
+    return null
+  }
+  
+  const items = nutritionItems.value
+  let totalScore = 100
+  
+  items.forEach(item => {
+    const actual = parseFloat(item.actual)
+    const min = item.min
+    const max = item.max
+    const mid = (min + max) / 2
+    
+    // 如果在推荐范围内，不扣分
+    if (actual >= min && actual <= max) {
+      return
+    }
+    
+    // 如果低于最小值
+    if (actual < min) {
+      const deficit = min - actual
+      const deficitRatio = deficit / min
+      
+      // 根据不足程度扣分：不足越多扣分越多
+      // 不足50%以上：扣15分
+      // 不足30-50%：扣10分
+      // 不足10-30%：扣5分
+      // 不足10%以下：扣2分
+      if (deficitRatio > 0.5) {
+        totalScore -= 15
+      } else if (deficitRatio > 0.3) {
+        totalScore -= 10
+      } else if (deficitRatio > 0.1) {
+        totalScore -= 5
+      } else {
+        totalScore -= 2
+      }
+    }
+    
+    // 如果高于最大值
+    if (actual > max) {
+      const excess = actual - max
+      const excessRatio = excess / max
+      
+      // 根据超标程度扣分：超标越多扣分越多
+      // 超标100%以上：扣20分
+      // 超标50-100%：扣15分
+      // 超标20-50%：扣8分
+      // 超标20%以下：扣3分
+      if (excessRatio > 1.0) {
+        totalScore -= 20
+      } else if (excessRatio > 0.5) {
+        totalScore -= 15
+      } else if (excessRatio > 0.2) {
+        totalScore -= 8
+      } else {
+        totalScore -= 3
+      }
+    }
+  })
+  
+  // 确保分数在0-100之间
+  return Math.max(0, Math.min(100, Math.round(totalScore)))
+})
+
+const healthSummary = computed(() => {
+  const score = healthScore.value
+  
+  // 根据分数返回评价
+  if (score >= 90) return '饮食状况优秀'
+  if (score >= 80) return '饮食状况良好'
+  if (score >= 70) return '饮食状况一般'
+  if (score >= 60) return '饮食需要注意'
   return '饮食需要改善'
 })
 
-const healthIcon = computed(() => {
-  const items = nutritionItems.value
-  const goodCount = items.filter(item => {
-    const actual = parseFloat(item.actual)
-    return actual >= item.min && actual <= item.max
-  }).length
+// 根据分数计算渐变色（绿到红）
+const getHealthColor = (score) => {
+  if (score === null) return '#9ca3af' // 灰色表示无数据
   
-  if (goodCount >= 4) return '✓'
-  if (goodCount >= 2) return '!'
-  return '✕'
+  // 使用HSL色彩空间实现平滑渐变
+  // 绿色(120) -> 黄色(60) -> 红色(0)
+  // 分数越高越绿，分数越低越红
+  const hue = (score / 100) * 120 // 0-120度
+  return `hsl(${hue}, 70%, 50%)`
+}
+
+const healthCardStyle = computed(() => {
+  const score = healthScore.value
+  
+  if (score === null) {
+    return {
+      background: 'linear-gradient(135deg, #ffffff 0%, #f9fafb 100%)',
+      border: '2px solid #e5e7eb',
+      color: '#9ca3af'
+    }
+  }
+  
+  // 根据分数生成渐变背景
+  const hue = (score / 100) * 120
+  const lightBg = `hsl(${hue}, 50%, 98%)`
+  const darkBg = `hsl(${hue}, 45%, 96%)`
+  const borderColor = `hsl(${hue}, 50%, 80%)`
+  const accentColor = getHealthColor(score)
+  
+  return {
+    background: `linear-gradient(135deg, ${lightBg} 0%, ${darkBg} 100%)`,
+    border: `2px solid ${borderColor}`,
+    color: accentColor
+  }
 })
 
-const healthIconClass = computed(() => {
-  const items = nutritionItems.value
-  const goodCount = items.filter(item => {
-    const actual = parseFloat(item.actual)
-    return actual >= item.min && actual <= item.max
-  }).length
+const healthBadgeStyle = computed(() => {
+  const score = healthScore.value
+  if (score === null) return {}
   
-  if (goodCount >= 4) return 'icon-good'
-  if (goodCount >= 2) return 'icon-warning'
-  return 'icon-bad'
+  const hue = (score / 100) * 120
+  const bgColor = `hsl(${hue}, 60%, 95%)`
+  const textColor = `hsl(${hue}, 70%, 40%)`
+  
+  return {
+    backgroundColor: bgColor,
+    color: textColor
+  }
 })
 
-const healthStatusClass = computed(() => {
-  const items = nutritionItems.value
-  const goodCount = items.filter(item => {
-    const actual = parseFloat(item.actual)
-    return actual >= item.min && actual <= item.max
-  }).length
-  
-  if (goodCount >= 4) return 'status-good'
-  if (goodCount >= 2) return 'status-warning'
-  return 'status-bad'
-})
+const getScoreLevel = () => {
+  const score = healthScore.value
+  if (score === null) return ''
+  if (score >= 90) return 'A+'
+  if (score >= 80) return 'A'
+  if (score >= 70) return 'B'
+  if (score >= 60) return 'C'
+  return 'D'
+}
 
 const recentOrders = computed(() => orders.value.slice(0, 3))
 
 const healthTipDisplay = computed(() => {
-  if (orders.value.length === 0) {
-    return '暂无订单数据'
-  }
+  const score = healthScore.value
   
   // 如果有后端返回的建议，优先使用
   if (healthTip.value) {
     return healthTip.value
   }
   
-  // 根据营养摄入情况生成建议
+  // 根据分数生成建议
+  if (score >= 90) {
+    return '营养摄入非常均衡，各项指标都在理想范围内，继续保持'
+  }
+  
+  if (score >= 80) {
+    return '营养摄入良好，大部分指标达标，稍作调整会更完美'
+  }
+  
+  // 找出最需要改善的2-3项
   const items = nutritionItems.value
   const lowItems = items.filter(item => parseFloat(item.actual) < item.min)
-  const highItems = items.filter(item => parseFloat(item.actual) > item.max)
+    .sort((a, b) => {
+      const aDeficit = (a.min - parseFloat(a.actual)) / a.min
+      const bDeficit = (b.min - parseFloat(b.actual)) / b.min
+      return bDeficit - aDeficit
+    })
   
-  if (lowItems.length === 0 && highItems.length === 0) {
-    return '营养摄入均衡，继续保持良好的饮食习惯'
-  }
+  const highItems = items.filter(item => parseFloat(item.actual) > item.max)
+    .sort((a, b) => {
+      const aExcess = (parseFloat(a.actual) - a.max) / a.max
+      const bExcess = (parseFloat(b.actual) - b.max) / b.max
+      return bExcess - aExcess
+    })
   
   const tips = []
   
-  if (lowItems.length > 0) {
-    const lowNames = lowItems.map(item => item.name).join('、')
-    if (lowItems.some(item => item.name === '蛋白质')) {
-      tips.push('建议增加鱼肉、鸡蛋、豆制品等优质蛋白')
-    }
-    if (lowItems.some(item => item.name === '膳食纤维')) {
-      tips.push('多吃蔬菜水果和全谷物')
-    }
-    if (lowItems.some(item => item.name === '热量')) {
-      tips.push('适当增加主食和优质蛋白摄入')
-    }
+  // 优先提示超标问题
+  if (highItems.length > 0) {
+    const item = highItems[0]
+    if (item.name === '脂肪') tips.push('减少油炸食品和高脂肪食物')
+    else if (item.name === '碳水') tips.push('控制主食和甜食摄入')
+    else if (item.name === '热量') tips.push('注意控制总热量摄入')
   }
   
-  if (highItems.length > 0) {
-    if (highItems.some(item => item.name === '脂肪')) {
-      tips.push('减少油炸食品和高脂肪食物')
-    }
-    if (highItems.some(item => item.name === '碳水')) {
-      tips.push('控制主食和甜食摄入')
-    }
-    if (highItems.some(item => item.name === '热量')) {
-      tips.push('注意控制总热量摄入')
-    }
+  // 再提示不足问题
+  if (lowItems.length > 0 && tips.length < 2) {
+    const item = lowItems[0]
+    if (item.name === '蛋白质') tips.push('增加鱼肉、鸡蛋、豆制品等优质蛋白')
+    else if (item.name === '膳食纤维') tips.push('多吃蔬菜水果和全谷物')
+    else if (item.name === '钙') tips.push('增加奶制品和豆制品摄入')
+    else if (item.name === '维生素C') tips.push('多吃新鲜蔬菜和水果')
+    else if (item.name === '铁') tips.push('适量食用红肉或深色蔬菜')
+    else if (item.name === '热量') tips.push('适当增加主食摄入')
+  }
+  
+  // 如果还有空间，再加一个
+  if (lowItems.length > 1 && tips.length < 2) {
+    const item = lowItems[1]
+    if (item.name === '蛋白质') tips.push('增加优质蛋白')
+    else if (item.name === '膳食纤维') tips.push('增加膳食纤维')
+    else if (item.name === '钙') tips.push('补充钙质')
+    else if (item.name === '维生素C') tips.push('补充维生素C')
   }
   
   if (tips.length > 0) {
-    return tips.join('，')
+    return '建议：' + tips.join('，')
   }
   
-  return '保持低盐饮食，多吃蔬菜水果'
+  return '保持均衡饮食，注意营养搭配'
 })
 
 const getProgressWidth = (item) => {
@@ -671,60 +791,84 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.health-summary {
+/* 空状态 - Apple/Google 风格 */
+.health-summary-empty {
   text-align: center;
-  padding: 24px;
-  transition: all 0.3s ease;
+  padding: 40px 24px;
+  background: #ffffff;
+  border: 1px solid #f0f0f0;
+  border-radius: 16px;
 }
 
-.health-summary.status-good {
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-  border: 2px solid #86efac;
+.empty-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.01em;
 }
 
-.health-summary.status-warning {
-  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-  border: 2px solid #fcd34d;
+.empty-desc {
+  font-size: 15px;
+  color: #86868b;
+  margin: 0;
+  line-height: 1.5;
+  font-weight: 400;
 }
 
-.health-summary.status-bad {
-  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-  border: 2px solid #fca5a5;
-}
-
-.health-icon {
-  width: 60px;
-  height: 60px;
-  margin: 0 auto 16px;
-  border-radius: 50%;
+/* 有数据状态 */
+.health-summary {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 32px;
-  color: white;
-  font-weight: bold;
+  gap: 24px;
+  padding: 24px;
   transition: all 0.3s ease;
+  border-radius: 16px;
+  position: relative;
+  overflow: hidden;
 }
 
-.health-icon.icon-good {
-  background: linear-gradient(135deg, #1f9c7a, #16a34a);
-  box-shadow: 0 4px 12px rgba(31, 156, 122, 0.3);
+.health-summary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  opacity: 0.05;
+  background: radial-gradient(circle at top right, currentColor 0%, transparent 70%);
+  pointer-events: none;
 }
 
-.health-icon.icon-warning {
-  background: linear-gradient(135deg, #f59e0b, #eab308);
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+.health-left {
+  flex-shrink: 0;
 }
 
-.health-icon.icon-bad {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+.health-score {
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1;
+  transition: color 0.3s ease;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-.health-summary h2 {
-  font-size: 24px;
-  margin-bottom: 8px;
+.health-right {
+  flex: 1;
+  min-width: 0;
+}
+
+.health-right h3 {
+  font-size: 22px;
+  font-weight: 700;
   color: var(--text);
+  margin: 0 0 8px 0;
+}
+
+.health-tip {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.6;
 }
 
 .nutrition-comparison {
@@ -744,8 +888,6 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
-  flex-wrap: wrap;
-  gap: 12px;
 }
 
 .card-title {
@@ -753,40 +895,6 @@ onUnmounted(() => {
   font-weight: 700;
   color: var(--text);
   margin: 0;
-}
-
-.nutrition-status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 16px;
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.nutrition-status-badge.status-excellent {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-}
-
-.nutrition-status-badge.status-good {
-  background: linear-gradient(135deg, #34d399, #10b981);
-  color: white;
-}
-
-.nutrition-status-badge.status-warning {
-  background: linear-gradient(135deg, #fbbf24, #f59e0b);
-  color: white;
-}
-
-.nutrition-status-badge.status-poor {
-  background: linear-gradient(135deg, #f87171, #ef4444);
-  color: white;
-}
-
-.status-icon {
-  font-size: 14px;
 }
 
 .line-chart-wrapper {
