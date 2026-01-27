@@ -517,7 +517,7 @@ const getMonthlyRadarOption = () => {
 // 月报折线图配置
 const getMonthlyLineOption = () => {
   const days = monthly.value.days || []
-  const displayIndices = [0, 5, 10, 15, 20, 25, 29].filter(i => i < days.length)
+  const calories = monthly.value.calories || []
   
   return {
     tooltip: {
@@ -531,8 +531,12 @@ const getMonthlyLineOption = () => {
     },
     xAxis: {
       type: 'category',
-      data: displayIndices.map(i => days[i]?.slice(5) || ''),
-      boundaryGap: false
+      data: days.map(d => d.slice(5)),
+      boundaryGap: false,
+      axisLabel: {
+        interval: 'auto',
+        rotate: 0
+      }
     },
     yAxis: {
       type: 'value',
@@ -541,7 +545,7 @@ const getMonthlyLineOption = () => {
     series: [{
       name: '热量',
       type: 'line',
-      data: displayIndices.map(i => monthly.value.calories[i]),
+      data: calories,
       smooth: true,
       lineStyle: {
         color: '#1f9c7a',

@@ -126,8 +126,8 @@ async function bootstrap() {
         port: PORT,
         time: getLocalDateTimeString()
       });
-      console.log(`✅ Server running on http://localhost:${PORT}`);
-      console.log(`⏰ 当前北京时间: ${getLocalDateTimeString()}`);
+      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`当前北京时间: ${getLocalDateTimeString()}`);
     });
 
     // 优雅关闭
