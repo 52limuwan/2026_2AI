@@ -1,4 +1,5 @@
 const db = require('../db');
+const { getToday, getBeijingTime, getCurrentHour } = require('../utils/dateHelper');
 
 /**
  * 发送每日营养报告通知
@@ -22,8 +23,8 @@ async function sendDailyReports() {
         continue;
       }
       
-      // 获取今日营养数据
-      const today = new Date().toISOString().split('T')[0];
+      // 获取今日营养数据（使用北京时间）
+      const today = getToday();
       const nutrition = await db.get(`
         SELECT 
           SUM(JSON_EXTRACT(totals, '$.calories')) as total_calories,
@@ -78,10 +79,14 @@ async function sendWeeklyReports() {
         continue;
       }
       
-      // 获取本周营养数据
-      const weekAgo = new Date();
+      // 获取本周营养数据（使用北京时间）
+      const now = getBeijingTime();
+      const weekAgo = new Date(now);
       weekAgo.setDate(weekAgo.getDate() - 7);
-      const weekAgoStr = weekAgo.toISOString().split('T')[0];
+      const year = weekAgo.getFullYear();
+      const month = String(weekAgo.getMonth() + 1).padStart(2, '0');
+      const day = String(weekAgo.getDate()).padStart(2, '0');
+      const weekAgoStr = `${year}-${month}-${day}`;
       
       const nutrition = await db.get(`
         SELECT 
@@ -129,7 +134,8 @@ async function sendMealTimeReminders() {
       WHERE u.role = 'client'
     `);
     
-    const hour = new Date().getHours();
+    // 使用北京时间判断用餐时间
+    const hour = getCurrentHour();
     let mealType = '';
     let content = '';
     
@@ -143,6 +149,7 @@ async function sendMealTimeReminders() {
       mealType = '晚餐';
       content = '晚餐时间到了，记得按时用餐，保持健康作息。';
     } else {
+      console.log(`[定时任务] 当前北京时间 ${hour}:00 不在用餐时间范围内`);
       return; // 不在用餐时间
     }
     

@@ -1,12 +1,13 @@
 const db = require('../db');
 const axios = require('axios');
+const { getToday, getBeijingTime, getLocalDateTimeString, getLocalDateString } = require('../utils/dateHelper');
 
 /**
- * 风险检测定时任务服务
+ * 风险检测定时任务服�?
  * 自动检测营养异常、饮食多样性等问题，并生成预警
  */
 
-// 获取或创建风险规则
+// 获取或创建风险规�?
 async function getOrCreateRule(code, name, severity, condition) {
   let rule = await db.get('SELECT id FROM risk_rules WHERE code = :code', { code });
   if (!rule) {
@@ -29,7 +30,7 @@ async function sendRiskNotification(clientId, title, content) {
     { user_id: clientId, role: 'client', title, content }
   );
   
-  // 发送给所有关联的监护人
+  // 发送给所有关联的监护�?
   const guardians = await db.all(
     `SELECT guardian_id FROM guardian_client_links WHERE client_id = :client_id AND status = 'active'`,
     { client_id: clientId }
@@ -60,7 +61,7 @@ async function sendRiskNotification(clientId, title, content) {
         { 
           user_id: gov.gov_user_id, 
           role: 'gov', 
-          title: `管辖用户风险预警：${title}`, 
+          title: `管辖用户风险预警�?{title}`, 
           content: content 
         }
       );
@@ -69,14 +70,14 @@ async function sendRiskNotification(clientId, title, content) {
 }
 
 /**
- * 执行风险检测任务
+ * 执行风险检测任�?
  * @param {Object} options - 检测选项
  * @param {Number} options.community_id - 社区ID（可选）
- * @param {Date} options.targetDate - 目标日期（默认今天）
+ * @param {Date} options.targetDate - 目标日期（默认今天，北京时间�?
  */
 async function runRiskDetection(options = {}) {
-  const { community_id = null, targetDate = new Date() } = options;
-  const today = targetDate.toISOString().slice(0, 10);
+  const { community_id = null, targetDate = null } = options;
+  const today = targetDate ? getLocalDateString(targetDate) : getToday();
   
   let communityFilter = '';
   const params = {};
@@ -105,7 +106,7 @@ async function runRiskDetection(options = {}) {
       const fat = Number(totals.fat || 0);
       const carbs = Number(totals.carbs || 0);
       
-      // 检测卡路里异常（正常范围：1500-2500）
+      // 检测卡路里异常（正常范围：1500-2500�?
       if (calories > 0) {
         if (calories < 1000) {
           const ruleId = await getOrCreateRule(
@@ -130,7 +131,7 @@ async function runRiskDetection(options = {}) {
                 client_id: record.client_id,
                 community_id: record.community_id,
                 rule_id: ruleId,
-                triggered_at: new Date().toISOString(),
+                triggered_at: getLocalDateTimeString(),
                 data_snapshot: JSON.stringify({ calories, reason: '摄入不足' })
               }
             );
@@ -139,13 +140,13 @@ async function runRiskDetection(options = {}) {
               type: 'nutrition_low_calories',
               client_id: record.client_id,
               client_name: record.name,
-              message: `用户 ${record.name} 今日摄入热量仅 ${calories.toFixed(0)} 卡路里，低于正常范围`
+              message: `用户 ${record.name} 今日摄入热量�?${calories.toFixed(0)} 卡路里，低于正常范围`
             });
             
             await sendRiskNotification(
               record.client_id, 
               '营养摄入不足', 
-              `您今日摄入热量仅 ${calories.toFixed(0)} 卡路里，低于正常范围（1500-2500卡路里），建议增加营养摄入。`
+              `您今日摄入热量仅 ${calories.toFixed(0)} 卡路里，低于正常范围�?500-2500卡路里），建议增加营养摄入。`
             );
           }
         } else if (calories > 3000) {
@@ -171,7 +172,7 @@ async function runRiskDetection(options = {}) {
                 client_id: record.client_id,
                 community_id: record.community_id,
                 rule_id: ruleId,
-                triggered_at: new Date().toISOString(),
+                triggered_at: getLocalDateTimeString(),
                 data_snapshot: JSON.stringify({ calories, reason: '摄入过量' })
               }
             );
@@ -186,17 +187,17 @@ async function runRiskDetection(options = {}) {
             await sendRiskNotification(
               record.client_id, 
               '营养摄入过量', 
-              `您今日摄入热量 ${calories.toFixed(0)} 卡路里，超过正常范围（1500-2500卡路里），建议适当控制饮食。`
+              `您今日摄入热�?${calories.toFixed(0)} 卡路里，超过正常范围�?500-2500卡路里），建议适当控制饮食。`
             );
           }
         }
       }
       
-      // 检测蛋白质摄入不足（正常范围：50-80g）
-      if (protein < 30 && calories > 500) { // 只在有摄入的情况下检测
+      // 检测蛋白质摄入不足（正常范围：50-80g�?
+      if (protein < 30 && calories > 500) { // 只在有摄入的情况下检�?
         const ruleId = await getOrCreateRule(
           'nutrition_low_protein',
-          '蛋白质摄入不足',
+          '蛋白质摄入不�?,
           'medium',
           { min_protein: 30, actual: protein }
         );
@@ -216,8 +217,8 @@ async function runRiskDetection(options = {}) {
               client_id: record.client_id,
               community_id: record.community_id,
               rule_id: ruleId,
-              triggered_at: new Date().toISOString(),
-              data_snapshot: JSON.stringify({ protein, reason: '蛋白质摄入不足' })
+              triggered_at: getLocalDateTimeString(),
+              data_snapshot: JSON.stringify({ protein, reason: '蛋白质摄入不�? })
             }
           );
           
@@ -230,19 +231,19 @@ async function runRiskDetection(options = {}) {
           
           await sendRiskNotification(
             record.client_id, 
-            '蛋白质摄入不足', 
-            `您今日蛋白质摄入仅 ${protein.toFixed(1)}g，低于正常范围（50-80g），建议增加优质蛋白质摄入。`
+            '蛋白质摄入不�?, 
+            `您今日蛋白质摄入�?${protein.toFixed(1)}g，低于正常范围（50-80g），建议增加优质蛋白质摄入。`
           );
         }
       }
       
-      // 检测营养元素失衡（脂肪/碳水比例异常）
+      // 检测营养元素失衡（脂肪/碳水比例异常�?
       const totalMacros = fat * 9 + carbs * 4; // 卡路里来自脂肪和碳水
       if (totalMacros > 0 && calories > 500) {
         const fatPercent = (fat * 9 / totalMacros) * 100;
         const carbsPercent = (carbs * 4 / totalMacros) * 100;
         
-        // 脂肪占比过高（>40%）或过低（<15%）
+        // 脂肪占比过高�?40%）或过低�?15%�?
         if (fatPercent > 40 || fatPercent < 15) {
           const ruleId = await getOrCreateRule(
             'nutrition_imbalanced_macros',
@@ -266,7 +267,7 @@ async function runRiskDetection(options = {}) {
                 client_id: record.client_id,
                 community_id: record.community_id,
                 rule_id: ruleId,
-                triggered_at: new Date().toISOString(),
+                triggered_at: getLocalDateTimeString(),
                 data_snapshot: JSON.stringify({ fat_percent: fatPercent, carbs_percent: carbsPercent, reason: '营养元素失衡' })
               }
             );
@@ -275,14 +276,14 @@ async function runRiskDetection(options = {}) {
               type: 'nutrition_imbalanced_macros',
               client_id: record.client_id,
               client_name: record.name,
-              message: `用户 ${record.name} 营养元素失衡，脂肪占比 ${fatPercent.toFixed(1)}%`
+              message: `用户 ${record.name} 营养元素失衡，脂肪占�?${fatPercent.toFixed(1)}%`
             });
           }
         }
       }
     }
     
-    // 2. 检测饮食多样性不足（最近7天尝试的菜品种类少于5种）
+    // 2. 检测饮食多样性不足（最�?天尝试的菜品种类少于5种）
     const lowDiversity = await db.all(
       `SELECT o.client_id, u.name, u.community_id, COUNT(DISTINCT oi.dish_id) as dish_count
        FROM orders o
@@ -299,7 +300,7 @@ async function runRiskDetection(options = {}) {
     for (const record of lowDiversity) {
       const ruleId = await getOrCreateRule(
         'diet_low_diversity',
-        '饮食多样性不足',
+        '饮食多样性不�?,
         'low',
         { min_dishes: 5, actual: record.dish_count }
       );
@@ -319,8 +320,8 @@ async function runRiskDetection(options = {}) {
             client_id: record.client_id,
             community_id: record.community_id,
             rule_id: ruleId,
-            triggered_at: new Date().toISOString(),
-            data_snapshot: JSON.stringify({ dish_count: record.dish_count, reason: '饮食多样性不足' })
+            triggered_at: getLocalDateTimeString(),
+            data_snapshot: JSON.stringify({ dish_count: record.dish_count, reason: '饮食多样性不�? })
           }
         );
         
@@ -328,13 +329,13 @@ async function runRiskDetection(options = {}) {
           type: 'diet_low_diversity',
           client_id: record.client_id,
           client_name: record.name,
-          message: `用户 ${record.name} 近7天仅尝试了 ${record.dish_count} 种菜品，饮食多样性不足`
+          message: `用户 ${record.name} �?天仅尝试�?${record.dish_count} 种菜品，饮食多样性不足`
         });
         
         await sendRiskNotification(
           record.client_id, 
-          '饮食多样性不足', 
-          `您近7天仅尝试了 ${record.dish_count} 种不同菜品，建议增加饮食多样性，尝试更多种类的食物。`
+          '饮食多样性不�?, 
+          `您近7天仅尝试�?${record.dish_count} 种不同菜品，建议增加饮食多样性，尝试更多种类的食物。`
         );
       }
     }
@@ -378,7 +379,7 @@ async function runRiskDetection(options = {}) {
             client_id: record.client_id,
             community_id: record.community_id,
             rule_id: ruleId,
-            triggered_at: new Date().toISOString(),
+            triggered_at: getLocalDateTimeString(),
             data_snapshot: JSON.stringify({ abnormal_days: record.abnormal_days, reason: '长期营养异常' })
           }
         );
@@ -387,7 +388,7 @@ async function runRiskDetection(options = {}) {
           type: 'nutrition_long_term_abnormal',
           client_id: record.client_id,
           client_name: record.name,
-          message: `用户 ${record.name} 近7天有 ${record.abnormal_days} 天营养摄入异常，需要重点关注`
+          message: `用户 ${record.name} �?天有 ${record.abnormal_days} 天营养摄入异常，需要重点关注`
         });
         
         await sendRiskNotification(
@@ -399,7 +400,7 @@ async function runRiskDetection(options = {}) {
     }
     
     console.log(`[风险检测] 完成检测，发现 ${warnings.length} 个预警`);
-    return { warnings, total: warnings.length, timestamp: new Date().toISOString() };
+    return { warnings, total: warnings.length, timestamp: getLocalDateTimeString() };
   } catch (err) {
     console.error('[风险检测] 执行失败:', err);
     throw err;
@@ -408,24 +409,27 @@ async function runRiskDetection(options = {}) {
 
 /**
  * 启动定时任务
- * 每天定时执行风险检测（建议在晚上22:00执行）
+ * 每天定时执行风险检测（建议在晚�?2:00执行�?
  */
 function startScheduler() {
   // 使用简单的setInterval实现定时任务
-  // 实际生产环境建议使用node-cron或类似的库
+  // 实际生产环境建议使用node-cron或类似的�?
   
   const SCHEDULE_INTERVAL = 60 * 60 * 1000; // 每小时执行一次（开发环境）
-  // const SCHEDULE_INTERVAL = 24 * 60 * 60 * 1000; // 每天执行一次（生产环境）
+  // const SCHEDULE_INTERVAL = 24 * 60 * 60 * 1000; // 每天执行一次（生产环境�?
   
-  console.log('[风险检测调度器] 已启动，将每小时执行一次风险检测');
+  const beijingTime = getBeijingTime();
+  console.log(`[风险检测调度器] 已启动，当前北京时间�?{getLocalDateTimeString()}，将每小时执行一次风险检测`);
   
-  // 立即执行一次
+  // 立即执行一�?
   runRiskDetection().catch(err => {
     console.error('[风险检测调度器] 首次执行失败:', err);
   });
   
   // 设置定时任务
   setInterval(() => {
+    const currentTime = getLocalDateTimeString();
+    console.log(`[风险检测调度器] 定时执行风险检测，当前北京时间�?{currentTime}`);
     runRiskDetection().catch(err => {
       console.error('[风险检测调度器] 定时执行失败:', err);
     });

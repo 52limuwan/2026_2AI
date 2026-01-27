@@ -8,6 +8,7 @@ const fs = require('fs');
 
 const config = require('./config');
 const logger = require('./utils/logger');
+const { getLocalDateTimeString } = require('./utils/dateHelper');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { generalLimiter } = require('./middleware/rateLimiter');
 const db = require('./db');
@@ -83,7 +84,8 @@ async function bootstrap() {
       res.json({
         code: 0,
         message: 'ok',
-        timestamp: new Date().toISOString(),
+        timestamp: getLocalDateTimeString(),
+        timezone: 'Asia/Shanghai (UTC+8)',
         env: config.server.env
       });
     });
@@ -121,9 +123,11 @@ async function bootstrap() {
     app.listen(PORT, () => {
       logger.info(`Server started on port ${PORT}`, {
         env: config.server.env,
-        port: PORT
+        port: PORT,
+        time: getLocalDateTimeString()
       });
       console.log(`✅ Server running on http://localhost:${PORT}`);
+      console.log(`⏰ 当前北京时间: ${getLocalDateTimeString()}`);
     });
 
     // 优雅关闭

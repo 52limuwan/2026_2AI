@@ -1,6 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
-const { getToday } = require('../utils/dateHelper');
+const { getToday, getLocalDateTimeString } = require('../utils/dateHelper');
 
 function generateOrderNumber() {
   return `ORD-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}-${Math.floor(Math.random() * 999)}`;
@@ -31,16 +31,9 @@ async function createOrder({
   }
   const uniqueGuardians = [...new Set(notifyGuardians)];
 
-  // 生成本地时间字符串 (YYYY-MM-DD HH:mm:ss)
-  // SQLite的CURRENT_TIMESTAMP返回UTC时间，我们需要使用本地时间
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
-  const localTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  // 生成北京时间字符串 (YYYY-MM-DD HH:mm:ss)
+  // SQLite的CURRENT_TIMESTAMP返回UTC时间，我们需要使用北京时间（UTC+8）
+  const localTime = getLocalDateTimeString();
 
   const result = await db.run(
     `INSERT INTO orders (order_number, client_id, guardian_id, merchant_id, store_id, community_id, community_code, total_amount, status, payment_status, payment_method, scheduled_at, address, contact, remark, community_name, window_name, created_at)
