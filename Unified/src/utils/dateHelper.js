@@ -1,17 +1,21 @@
 /**
  * 前端日期时间处理工具
  * 统一处理时区和日期格式化
+ * 
+ * 注意：本工具函数不依赖网络，也不依赖系统时区设置
+ * 只要系统时间准确，无论在什么时区环境下都能正确计算北京时间
  */
 
 /**
  * 获取当前北京时间的Date对象
+ * 不依赖系统时区设置，适用于内网环境
  * @returns {Date} 北京时间的Date对象
  */
 export function getBeijingTime() {
   const now = new Date();
-  // 获取UTC时间戳
+  // 获取当前时间的UTC时间戳（毫秒）
   const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
-  // 转换为北京时间（UTC+8）
+  // 转换为北京时间（UTC+8 = +8小时 = +28800000毫秒）
   return new Date(utcTime + (8 * 3600000));
 }
 

@@ -8,9 +8,34 @@
 
 本项目统一使用**北京时间（UTC+8）**作为标准时区。
 
+### ✅ 内网环境完全支持
+
+**重要**: 本系统的时间处理**完全不依赖网络**，完美适配内网环境！
+
+#### 核心特性
+- ✅ **零网络依赖** - 所有时间计算都在本地完成
+- ✅ **无需NTP同步** - 不需要联网校时
+- ✅ **自动时区适配** - 无论系统设置什么时区都能正确计算
+- ⚠️ **仅需系统时间准确** - 可以手动设置
+
+#### 工作原理
+```
+系统时间 → 计算UTC时间 → 加8小时 → 北京时间
+```
+
+无论服务器在UTC+8、UTC+0还是UTC-8时区，只要系统时间准确，都能正确计算北京时间！
+
+#### 快速验证
+```bash
+# 运行内网环境测试（推荐）
+node Backed/test-offline-timezone.js
+
+# 预期结果：UTC 12:50 → 北京 20:50 ✅
+```
+
 ### 当前时间
 - **日期**: 2026年1月27日 星期二
-- **时间**: 晚上20:50 (北京时间)
+- **时间**: 晚上21:00 (北京时间)
 
 ### 快速开始
 
@@ -47,11 +72,21 @@ const friendly = getFriendlyDate(plan.date);  // "今天" / "明天"
 # 运行时间测试
 node Backed/test-timezone.js
 
+# 运行内网环境测试
+node Backed/test-offline-timezone.js
+
 # 检查服务器健康状态
 curl http://localhost:8000/health
 ```
 
 ### 📚 详细文档
+
+#### 内网部署（必读）
+- [内网部署指南](OFFLINE_DEPLOYMENT_GUIDE.md) - **内网环境完整部署说明**
+- [快速检查卡](OFFLINE_QUICK_CHECK.md) - **5分钟快速验证**
+- [内网就绪总结](OFFLINE_READY_SUMMARY.md) - 内网优化说明
+
+#### 开发参考
 - [时区处理指南](Backed/docs/TIMEZONE_GUIDE.md) - 完整的时区处理规范
 - [快速参考](QUICK_TIME_REFERENCE.md) - 常用操作快速查询
 - [修复总结](TIME_SYNC_SUMMARY.md) - 时间同步修复详情
