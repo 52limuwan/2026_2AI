@@ -49,7 +49,10 @@ class DeliveryOptimizer:
         }
     
     def _optimize_route(self, orders: List[Order]) -> List[Order]:
-        """优化算法：楼栋分组 -> 单元分组 -> 楼层排序"""
+        """
+        优化算法：楼栋分组 -> 按楼层从低到高排序 -> 同楼层按单元排序
+        确保同一楼栋内从1楼到顶楼依次配送，不跳过中间楼层
+        """
         # 按楼栋分组
         building_groups = {}
         for order in orders:
@@ -63,17 +66,10 @@ class DeliveryOptimizer:
         for building in sorted(building_groups.keys()):
             building_orders = building_groups[building]
             
-            # 按单元分组
-            unit_groups = {}
-            for order in building_orders:
-                if order.unit not in unit_groups:
-                    unit_groups[order.unit] = []
-                unit_groups[order.unit].append(order)
-            
-            # 对每个单元按楼层排序
-            for unit in sorted(unit_groups.keys()):
-                unit_orders = sorted(unit_groups[unit], key=lambda x: x.floor)
-                optimized.extend(unit_orders)
+            # 关键：按楼层从低到高排序，同楼层的按单元排序
+            # 这样确保从1楼到顶楼依次配送，不会跳过中间楼层
+            building_orders_sorted = sorted(building_orders, key=lambda x: (x.floor, x.unit, x.room))
+            optimized.extend(building_orders_sorted)
         
         return optimized
     

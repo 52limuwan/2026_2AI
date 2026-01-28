@@ -1,6 +1,5 @@
 """
-智能配送路径优化系统 - 现代简约风格
-参考 Apple & Google Material Design
+高峰期
 """
 import pygame
 import random
@@ -13,7 +12,7 @@ class ModernVisualizer:
         self.width = 1600
         self.height = 900
         self.screen = pygame.display.set_mode((self.width, self.height))
-        pygame.display.set_caption("智能配送路径优化")
+        pygame.display.set_caption("高峰期智能配送路径优化")
         
         # 加载字体
         import os
@@ -81,8 +80,8 @@ class ModernVisualizer:
         print("空格 - 生成订单 | 回车 - 开始对比 | R - 重置")
     
     def generate_orders(self):
-        """生成订单 - 制造最混乱的原始顺序以展示优化效果"""
-        count = 21  # 更多订单
+        """生成订单 - 制造极度混乱的原始顺序"""
+        count = 30  # 更多订单
         self.orders = []
         
         # 确保每个楼栋都有订单
@@ -105,11 +104,23 @@ class ModernVisualizer:
         for order in temp_orders:
             buildings[order.building - 1].append(order)
         
-        # 打乱每个楼栋内的顺序（高低楼层完全混乱）
+        # 每个楼栋内制造最差顺序：高低楼层完全交替
         for building_orders in buildings:
-            random.shuffle(building_orders)
+            building_orders.sort(key=lambda x: x.floor)
+            result = []
+            left = 0
+            right = len(building_orders) - 1
+            while left <= right:
+                if len(result) % 2 == 0:
+                    result.append(building_orders[right])
+                    right -= 1
+                else:
+                    result.append(building_orders[left])
+                    left += 1
+            building_orders.clear()
+            building_orders.extend(result)
         
-        # 交替取不同楼栋的订单，制造频繁跨楼栋的最差路径
+        # 交替取不同楼栋的订单，制造频繁跨楼栋
         self.orders = []
         for i in range(orders_per_building):
             for building_orders in buildings:
@@ -168,17 +179,8 @@ class ModernVisualizer:
         for idx, order in enumerate(orders):
             x, y = self.get_order_position(order, panel_rect)
             
-            # 订单点 - 外圈
-            pygame.draw.circle(self.screen, color, (int(x), int(y)), 12)
-            # 内圈白色背景
-            pygame.draw.circle(self.screen, self.CARD_BG, (int(x), int(y)), 10)
-            
-            # 编号 - 使用更小的字体确保居中
-            num_text = str(idx + 1)
-            num_surf = self.font_small.render(num_text, True, color)
-            # 精确居中
-            num_rect = num_surf.get_rect(center=(int(x), int(y)))
-            self.screen.blit(num_surf, num_rect)
+            # 订单点 - 实心圆
+            pygame.draw.circle(self.screen, color, (int(x), int(y)), 8)
         
         # 绘制机器人
         if progress is not None and len(orders) > 0:
