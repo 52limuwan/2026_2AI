@@ -44,8 +44,9 @@ def test_serial(port, baudrate=921600):
         br_window = deque(maxlen=5)
         
         # 模拟模式控制
-        simulation_mode = {'active': False, 'type': None}  # type: 'abnormal' or 'no_sign'
+        simulation_mode = {'active': False, 'type': None, 'start_time': None}  # 添加开始时间
         simulation_lock = threading.Lock()
+        last_display_time = time.time()  # 用于控制显示帧率（所有模式统一）
         
         def keyboard_listener():
             """监听键盘输入（Windows）"""
@@ -66,12 +67,14 @@ def test_serial(port, baudrate=921600):
                         with simulation_lock:
                             simulation_mode['active'] = True
                             simulation_mode['type'] = 'abnormal'
+                            simulation_mode['start_time'] = time.time()
                     
                     # Ctrl+P (0x10)
                     elif key == b'\x10':
                         with simulation_lock:
                             simulation_mode['active'] = True
                             simulation_mode['type'] = 'no_sign'
+                            simulation_mode['start_time'] = time.time()
                     
                     # ESC键退出模拟
                     elif key == b'\x1b':
@@ -79,6 +82,7 @@ def test_serial(port, baudrate=921600):
                             if simulation_mode['active']:
                                 simulation_mode['active'] = False
                                 simulation_mode['type'] = None
+                                simulation_mode['start_time'] = None
                 
                 time.sleep(0.05)
         
@@ -131,7 +135,26 @@ def test_serial(port, baudrate=921600):
                         with simulation_lock:
                             sim_active = simulation_mode['active']
                             sim_type = simulation_mode['type']
+                            sim_start_time = simulation_mode['start_time']
+                            
+                            # 检查是否需要自动恢复（3秒后）
+                            if sim_active and sim_start_time:
+                                elapsed = time.time() - sim_start_time
+                                if elapsed >= 3.0:
+                                    simulation_mode['active'] = False
+                                    simulation_mode['type'] = None
+                                    simulation_mode['start_time'] = None
+                                    sim_active = False
                         
+                        # 统一控制帧率：所有模式都是5帧/秒
+                        current_time = time.time()
+                        time_diff = current_time - last_display_time
+                        if time_diff < 0.2:  # 每帧间隔200ms（5帧/秒）
+                            buffer = buffer[frame_size:]
+                            continue
+                        last_display_time = current_time
+                        
+                        # 模拟模式下替换数据
                         if sim_active:
                             if sim_type == 'abnormal':
                                 # 模拟呼吸异常：呼吸率100-150
@@ -159,23 +182,34 @@ def test_serial(port, baudrate=921600):
                         HR = sum(hr_window) / len(hr_window) if hr_window else HR_raw
                         BR = sum(br_window) / len(br_window) if br_window else BR_raw
                         
-                        # 判断是否检测到有效人体：多维度生命体征+距离联合判定
-                        if (BR > 0 and 10 <= BR <= 35 and                                  # 呼吸非零且在正常生理范围
-                            40 <= HR <= 150 and                                            # 心率在正常人体生理范围
-                            0.5 <= distance <= 4.0 and                                     # 检测距离在有效监测区间
-                            (abs(Bwave) > 0.0001 or abs(Hwave) > 0.0001)):                 # B/H波有有效波动
+                        # 判断是否检测到有效人体：呼吸为主要判断依据
+                        # 核心逻辑：呼吸率必须有效（>5 BPM），这是生命体征的关键指标
+                        if (BR > 5 and 5 <= BR <= 40 and                      # 呼吸率在正常范围
+                            distance <= 4.0 and                                # 距离有效
+                            (abs(Bwave) > 0.0001 or abs(Hwave) > 0.0001)):    # 有波动
+                            status = "检测到生命体征"
+                        # 辅助判断：呼吸+心率都有效（更可靠）
+                        elif (BR > 5 and HR > 30 and distance <= 4.0):
                             status = "检测到生命体征"
                         else:
                             status = "未检测到生命体征"
                         
-                        # 呼吸异常警报
+                        # 呼吸异常警报（更灵敏的阈值）
                         alert = ""
                         if BR >= 100:
-                            alert = " [警报] 呼吸异常！"
+                            alert = " ⚠️ [警报] 呼吸异常！"
+                        elif BR > 35:
+                            alert = " ⚠️ [警告] 呼吸偏快"
+                        elif BR > 0 and BR < 10:
+                            alert = " ⚠️ [警告] 呼吸偏慢"
                         
                         frame_count += 1
-                        mode_tag = ""
-                        print(f"帧 {frame_count} [{status}]{mode_tag}: 心率={HR:.1f} BPM, 呼吸率={BR:.1f} BPM, 距离={distance:.2f} m, B波={Bwave:.4f}, H波={Hwave:.4f}{alert}")
+                        
+                        # 根据状态使用不同的显示格式
+                        if "检测到" in status:
+                            print(f"✓ 帧 {frame_count} [{status}]: 心率={HR:.1f} BPM, 呼吸率={BR:.1f} BPM, 距离={distance:.2f}m, B波={Bwave:.4f}, H波={Hwave:.4f}{alert}")
+                        else:
+                            print(f"✗ 帧 {frame_count} [{status}]: 心率={HR:.1f} BPM, 呼吸率={BR:.1f} BPM, 距离={distance:.2f}m, B波={Bwave:.4f}, H波={Hwave:.4f}{alert}")
                         
                         # 移除已处理的帧
                         buffer = buffer[frame_size:]
@@ -183,7 +217,7 @@ def test_serial(port, baudrate=921600):
                         # 帧尾不对，跳过这个帧头
                         buffer = buffer[4:]
                 
-                time.sleep(0.01)  # 减少延时，提高响应速度
+                time.sleep(0.05)  # 轻量级延时，实际帧率由上面的时间控制
         
         except KeyboardInterrupt:
             print(f"\n\n用户停止监测")
