@@ -1,6 +1,9 @@
 """
 快速测试脚本 - 毫米波雷达串口读取（带降噪优化）
 使用方法: python quick_test.py
+快捷键:
+  Ctrl+O - 模拟呼吸异常（100-150 BPM）并触发警报
+  Ctrl+P - 模拟无生命体征
 """
 
 import serial
@@ -8,6 +11,14 @@ import serial.tools.list_ports
 import struct
 import time
 from collections import deque
+import threading
+import random
+import sys
+import os
+
+# Windows平台键盘监听
+if os.name == 'nt':
+    import msvcrt
 
 def list_ports():
     """列出所有可用串口"""
@@ -32,7 +43,52 @@ def test_serial(port, baudrate=921600):
         hr_window = deque(maxlen=5)
         br_window = deque(maxlen=5)
         
-        print("按 Ctrl+C 停止监测\n")
+        # 模拟模式控制
+        simulation_mode = {'active': False, 'type': None}  # type: 'abnormal' or 'no_sign'
+        simulation_lock = threading.Lock()
+        
+        def keyboard_listener():
+            """监听键盘输入（Windows）"""
+            if os.name != 'nt':
+                return
+            
+            ctrl_pressed = False
+            while True:
+                if msvcrt.kbhit():
+                    key = msvcrt.getch()
+                    
+                    # 检测Ctrl键
+                    if key == b'\x00' or key == b'\xe0':
+                        continue
+                    
+                    # Ctrl+O (0x0F)
+                    if key == b'\x0f':
+                        with simulation_lock:
+                            simulation_mode['active'] = True
+                            simulation_mode['type'] = 'abnormal'
+                    
+                    # Ctrl+P (0x10)
+                    elif key == b'\x10':
+                        with simulation_lock:
+                            simulation_mode['active'] = True
+                            simulation_mode['type'] = 'no_sign'
+                    
+                    # ESC键退出模拟
+                    elif key == b'\x1b':
+                        with simulation_lock:
+                            if simulation_mode['active']:
+                                simulation_mode['active'] = False
+                                simulation_mode['type'] = None
+                
+                time.sleep(0.05)
+        
+        # 启动键盘监听线程
+        if os.name == 'nt':
+            kb_thread = threading.Thread(target=keyboard_listener, daemon=True)
+            kb_thread.start()
+        
+        print("按 Ctrl+C 停止监测")
+        print("快捷键: Ctrl+O=呼吸异常 | Ctrl+P=无生命体征 | ESC=恢复正常\n")
         
         try:
             while True:  # 持续运行直到手动停止
@@ -71,11 +127,32 @@ def test_serial(port, baudrate=921600):
                         HR_raw = struct.unpack('<f', payload[12:16])[0]   # 同理，得到原始心率数据
                         distance = struct.unpack('<f', payload[16:20])[0] # 同理，得到距离数据
                         
+                        # 检查是否处于模拟模式
+                        with simulation_lock:
+                            sim_active = simulation_mode['active']
+                            sim_type = simulation_mode['type']
+                        
+                        if sim_active:
+                            if sim_type == 'abnormal':
+                                # 模拟呼吸异常：呼吸率100-150
+                                BR_raw = random.uniform(100, 150)
+                                HR_raw = random.uniform(60, 90)  # 心率保持正常
+                                Bwave = random.uniform(0.01, 0.05)
+                                Hwave = random.uniform(0.01, 0.05)
+                                distance = random.uniform(1.0, 2.0)
+                            elif sim_type == 'no_sign':
+                                # 模拟无生命体征
+                                BR_raw = 0
+                                HR_raw = 0
+                                Bwave = 0
+                                Hwave = 0
+                                distance = random.uniform(0.1, 0.4)
+                        
                         # 异常值过滤：心率原始值限定合理范围，有效数据加入滑动窗口
                         if 30 <= HR_raw <= 200:
                             hr_window.append(HR_raw)
                         # 异常值过滤：呼吸原始值限定合理范围，有效数据加入滑动窗口
-                        if 0 <= BR_raw <= 50:
+                        if 0 <= BR_raw <= 200:  # 扩大范围以支持模拟异常值
                             br_window.append(BR_raw)
                         
                         # 滑动平均降噪：窗口有数据则取平均值，无数据则沿用原始值（避免除零）
@@ -91,8 +168,14 @@ def test_serial(port, baudrate=921600):
                         else:
                             status = "未检测到生命体征"
                         
+                        # 呼吸异常警报
+                        alert = ""
+                        if BR >= 100:
+                            alert = " [警报] 呼吸异常！"
+                        
                         frame_count += 1
-                        print(f"帧 {frame_count} [{status}]: 心率={HR:.1f} BPM, 呼吸率={BR:.1f} BPM, 距离={distance:.2f} m, B波={Bwave:.4f}, H波={Hwave:.4f}")
+                        mode_tag = ""
+                        print(f"帧 {frame_count} [{status}]{mode_tag}: 心率={HR:.1f} BPM, 呼吸率={BR:.1f} BPM, 距离={distance:.2f} m, B波={Bwave:.4f}, H波={Hwave:.4f}{alert}")
                         
                         # 移除已处理的帧
                         buffer = buffer[frame_size:]
