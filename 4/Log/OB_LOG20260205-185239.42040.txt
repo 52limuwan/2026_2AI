@@ -1,0 +1,14 @@
+Log file created at: 2026/02/05 18:52:39
+Running on machine: DESKTOP-L1QP10V
+Running duration (h:mm:ss): 0:00:00
+Log line format: [IWEF]yyyymmdd hh:mm:ss.uuuuuu threadid file:line] msg
+[I20260205 18:52:39.226472 39732 DeviceManager.cpp:54] DeviceManager init ...
+[I20260205 18:52:39.227473 39732 MfPal.cpp:95] WmfPal init ...
+[I20260205 18:52:39.248689 39732 MfPal.cpp:101] WmfPal created!
+[I20260205 18:52:39.265306 39732 EnumeratorLibusb.cpp:325] queryDevicesInfo done!
+[I20260205 18:52:39.265306 39732 DeviceManager.cpp:373] Current usb device port list::
+[I20260205 18:52:39.265306 39732 DeviceManager.cpp:362] No device matched!
+[I20260205 18:52:39.266305 39732 MfPal.cpp:437] Create WinEventDeviceWatcher!
+[I20260205 18:52:39.266305 39732 DeviceManager.cpp:99] DeviceManager init  done!
+[I20260205 18:52:39.266305 39732 DeviceManager.cpp:50] DeviceManager construct done
+[I20260205 18:52:39.266305 39732 Context.cpp:51] Context created!

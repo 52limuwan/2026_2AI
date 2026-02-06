@@ -1,0 +1,21 @@
+Log file created at: 2026/02/05 17:06:23
+Running on machine: DESKTOP-L1QP10V
+Running duration (h:mm:ss): 0:00:00
+Log line format: [IWEF]yyyymmdd hh:mm:ss.uuuuuu threadid file:line] msg
+[I20260205 17:06:23.222172 20740 DeviceManager.cpp:54] DeviceManager init ...
+[I20260205 17:06:23.223170 20740 MfPal.cpp:95] WmfPal init ...
+[I20260205 17:06:23.246634 20740 MfPal.cpp:101] WmfPal created!
+[I20260205 17:06:23.273209 20740 EnumeratorLibusb.cpp:325] queryDevicesInfo done!
+[I20260205 17:06:23.274715 20740 DeviceManager.cpp:373] Current usb device port list::
+[I20260205 17:06:23.274715 20740 DeviceManager.cpp:375]         - \\?\USB#VID_2BC5&PID_0511&MI_00#8&263C15F2&0&0000#{E5323777-F976-4F5B-9B55-B94699C46E44}\GLOBAL | USB Camera
+[I20260205 17:06:23.274715 20740 DeviceManager.cpp:375]         - \\?\USB#VID_2BC5&PID_0614#9&A5AD877&0&2#{C3B5F022-5A42-1980-1909-EA72095601B1} | 
+[W20260205 17:06:23.274715 20740 OpenNIDeviceInfo.cpp:172] New openni device matched.
+[I20260205 17:06:23.275717 20740 DeviceManager.cpp:345] Devices matched:
+[I20260205 17:06:23.275717 20740 DeviceManager.cpp:359]   - openniDevice = 1
+[I20260205 17:06:23.275717 20740 MfPal.cpp:437] Create WinEventDeviceWatcher!
+[I20260205 17:06:23.275717 20740 DeviceManager.cpp:99] DeviceManager init  done!
+[I20260205 17:06:23.275717 20740 DeviceManager.cpp:50] DeviceManager construct done
+[I20260205 17:06:23.275717 20740 Context.cpp:51] Context created!
+[E20260205 17:06:23.276929 20740 OpenNIHostProtocol.cpp:502] Get usb core type failed!
+[E20260205 17:06:45.853044 20740 OpenNIVideoSensor.cpp:634] OpenNI IR stream stop success.
+[E20260205 17:06:46.336234 20740 OpenNIVideoSensor.cpp:634] OpenNI Depth stream stop success.

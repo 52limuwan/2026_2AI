@@ -1,0 +1,8 @@
+# 奥比相机可视化程序依赖包
+# 请使用以下命令安装: pip install -r requirements.txt
+
+# NumPy - 必须使用 1.x 版本，SDK不兼容 2.x
+numpy>=1.21.0,<2.0
+
+# OpenCV - 图像处理和显示
+opencv-python>=4.2.0

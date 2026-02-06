@@ -1,0 +1,64 @@
+# Python调用奥比相机点云与红外功能指南
+## 一、前置准备（必做）
+1. 环境要求：Python 3.7/3.8/3.9 + numpy 1.21.0+ + opencv-python 4.2.0+，已配置奥比相机SDK（v1.57）并完成库文件拷贝（Linux需额外创建软链接）
+2. 设备连接：USB3.0数据线接入相机，虚拟机需同时连接“Orbbec 3D USB Camera”和“Depth Sensor”
+
+## 二、红外图像调用（直接运行SDK例程）
+### 1. 核心操作步骤
+1. 进入SDK的`python3.9/Samples`目录（Linux）或`python3.9\Samples`目录（Windows）
+2. 执行命令运行例程：
+   - Linux：`python3.9 InfraredViewer.py`
+   - Windows：`python ./InfraredViewer.py`
+
+### 2. 关键说明
+- 暂不开放手动切换IR通道接口（Windows平台）
+- 双目相机（Gemini）在Linux环境下，可通过设置`dataSource`数值切换（0=左IR，1=右IR），需修改例程代码添加属性配置
+
+## 三、点云功能调用（基于SDK扩展）
+### 1. 核心前提
+SDK已包含点云相关例程（`PointCloud.py`，需在Samples目录确认），依赖深度图与彩色图数据融合生成点云
+
+### 2. 调用步骤
+1. 确保深度图与彩色图例程可正常运行（基础数据采集正常）
+2. 进入Samples目录，执行点云例程命令：
+   - Linux：`python3.9 PointCloud.py`
+   - Windows：`python ./PointCloud.py`
+
+### 3. 代码核心逻辑（简化版）
+```python
+import ob  # 奥比相机SDK核心库
+import numpy as np
+import cv2
+
+# 1. 初始化Pipeline
+pipe = ob.Pipeline()
+
+# 2. 配置流（深度流+彩色流，点云生成依赖双流数据）
+config = ob.Config()
+depth_profile = pipe.get_stream_profile_list(ob.OB_SENSOR_DEPTH).get_default_video_stream_profile()
+color_profile = pipe.get_stream_profile_list(ob.OB_SENSOR_COLOR).get_default_video_stream_profile()
+config.enable_stream(depth_profile)
+config.enable_stream(color_profile)
+
+# 3. 启动流并获取帧数据
+pipe.start(config)
+while True:
+    frames = pipe.wait_for_frames(100)
+    if frames is None:
+        continue
+    # 获取深度帧和彩色帧
+    depth_frame = frames.get_depth_frame()
+    color_frame = frames.get_color_frame()
+    if depth_frame and color_frame:
+        # 4. 生成点云（SDK内置接口）
+        point_cloud = ob.PointCloud()
+        point_cloud.generate(depth_frame, color_frame)  # 融合生成带颜色的点云
+        # 可选：保存点云为PLY文件
+        point_cloud.save_to_file("point_cloud.ply")
+        break
+
+# 5. 释放资源
+pipe.stop()
+```
+
+需要我帮你**优化点云与红外调用的合并代码**，实现一次运行同时获取红外图像和点云数据吗？
