@@ -49,31 +49,31 @@
               :class="{ active: showBWave }"
               @click="showBWave = !showBWave"
             >
-              B波
+              呼吸
             </button>
             <button 
               class="wave-btn" 
               :class="{ active: showHWave }"
               @click="showHWave = !showHWave"
             >
-              H波
+              心跳
             </button>
           </div>
         </div>
 
-        <!-- B波 -->
+        <!-- 呼吸波形 -->
         <div class="wave-container" v-if="showBWave">
           <div class="wave-label">
-            <span class="muted">呼吸波形 (B波)</span>
+            <span class="muted">呼吸波形</span>
             <span class="wave-value">{{ bWave.toFixed(4) }}</span>
           </div>
           <canvas ref="bWaveCanvas" class="wave-canvas"></canvas>
         </div>
 
-        <!-- H波 -->
+        <!-- 心跳波形 -->
         <div class="wave-container" v-if="showHWave">
           <div class="wave-label">
-            <span class="muted">心跳波形 (H波)</span>
+            <span class="muted">心跳波形</span>
             <span class="wave-value">{{ hWave.toFixed(4) }}</span>
           </div>
           <canvas ref="hWaveCanvas" class="wave-canvas"></canvas>
