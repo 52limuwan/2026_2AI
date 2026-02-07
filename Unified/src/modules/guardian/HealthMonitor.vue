@@ -20,17 +20,6 @@
 
     <!-- 已连接时显示监测数据 -->
     <template v-else>
-      <!-- 状态卡片 -->
-      <div class="card">
-        <div class="status-row">
-          <div class="status-indicator" :class="statusClass">
-            <div class="status-dot"></div>
-            <span class="status-text">{{ statusText }}</span>
-          </div>
-          <span class="connection-status muted">{{ connectionText }}</span>
-        </div>
-      </div>
-
       <!-- 生命体征卡片 -->
       <div class="card">
         <div class="section-title">生命体征</div>
@@ -480,45 +469,6 @@ onUnmounted(() => {
 
 .retry-btn:active {
   transform: translateY(0);
-}
-
-.status-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: var(--fw-medium);
-}
-
-.status-indicator.detected {
-  color: #16a34a;
-}
-
-.status-indicator.no-sign {
-  color: var(--muted);
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.connection-status {
-  font-size: 12px;
 }
 
 .section-title {
