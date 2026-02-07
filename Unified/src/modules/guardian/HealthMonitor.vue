@@ -94,7 +94,7 @@
         </div>
         <div class="alert-list">
           <div 
-            v-for="alert in alerts" 
+            v-for="alert in paginatedAlerts" 
             :key="alert.id" 
             class="alert-item"
             :class="alert.type"
@@ -111,13 +111,36 @@
             </button>
           </div>
         </div>
+        
+        <!-- 分页控件 -->
+        <div class="pagination" v-if="totalPages > 1">
+          <button 
+            class="page-btn" 
+            :disabled="currentPage === 1"
+            @click="prevPage"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+          <button 
+            class="page-btn" 
+            :disabled="currentPage === totalPages"
+            @click="nextPage"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+        </div>
       </div>
     </template>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 
 // 连接状态
 const isConnected = ref(false)
@@ -140,6 +163,36 @@ const showHWave = ref(true)
 
 // 警报列表
 const alerts = ref([])
+
+// 分页相关
+const currentPage = ref(1)
+const pageSize = 10
+
+// 计算分页后的警报列表
+const paginatedAlerts = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  const end = start + pageSize
+  return alerts.value.slice(start, end)
+})
+
+// 计算总页数
+const totalPages = computed(() => {
+  return Math.ceil(alerts.value.length / pageSize)
+})
+
+// 上一页
+const prevPage = () => {
+  if (currentPage.value > 1) {
+    currentPage.value--
+  }
+}
+
+// 下一页
+const nextPage = () => {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+  }
+}
 
 // 本地存储的key
 const ALERTS_STORAGE_KEY = 'health_monitor_alerts'
@@ -171,6 +224,11 @@ const deleteAlert = (id) => {
   if (index !== -1) {
     alerts.value.splice(index, 1)
     saveAlerts()
+    
+    // 如果当前页没有数据了，回到上一页
+    if (paginatedAlerts.value.length === 0 && currentPage.value > 1) {
+      currentPage.value--
+    }
   }
 }
 
@@ -178,6 +236,7 @@ const deleteAlert = (id) => {
 const clearAllAlerts = () => {
   if (confirm('确定要清空所有警报记录吗？')) {
     alerts.value = []
+    currentPage.value = 1
     saveAlerts()
   }
 }
@@ -668,5 +727,54 @@ onUnmounted(() => {
 .delete-btn:hover {
   background: #fef2f2;
   color: #ef4444;
+}
+
+/* 分页控件 */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.page-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--ghost-bg);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.page-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.page-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: var(--fw-medium);
+  min-width: 60px;
+  text-align: center;
 }
 </style>
