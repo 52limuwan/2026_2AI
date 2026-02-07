@@ -35,6 +35,7 @@ const routes = [
       { path: 'ai-reports/:clientId', component: () => import('../modules/guardian/AiReports.vue'), meta: { title: '历史报告', hideTabBar: true } },
       { path: 'ai-reports/:clientId/:reportId', component: () => import('../modules/guardian/AiReportDetail.vue'), meta: { title: '报告详情', hideTabBar: true } },
       { path: 'ai', component: () => import('../modules/guardian/AIAssistant.vue'), meta: { title: 'AI助手' } },
+      { path: 'health-monitor', component: () => import('../modules/guardian/HealthMonitor.vue'), meta: { title: '健康监测', hideTabBar: true } },
       { path: 'notifications', component: () => import('../modules/guardian/Notifications.vue'), meta: { title: '通知' } },
       { path: 'profile', component: () => import('../modules/guardian/Profile.vue'), meta: { title: '个人中心' } },
       { path: 'client/:clientId', component: () => import('../modules/guardian/ClientProfile.vue'), meta: { title: '守护对象档案', hideTabBar: true } }

@@ -124,6 +124,23 @@
           </svg>
         </div>
       </div>
+
+      <div class="quick-action-card" @click="goHealthMonitor">
+        <div class="action-icon health-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+          </svg>
+        </div>
+        <div class="action-content">
+          <div class="action-title">健康监测</div>
+          <div class="action-desc">实时生命体征监测</div>
+        </div>
+        <div class="action-arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -287,6 +304,14 @@ const goAiReports = () => {
     return
   }
   router.push(`/guardian/ai-reports/${selectedClient.value.id}`)
+}
+
+const goHealthMonitor = () => {
+  if (!selectedClient?.value?.id) {
+    alert('请先选择守护对象')
+    return
+  }
+  router.push('/guardian/health-monitor')
 }
 
 const goProfile = () => {
@@ -613,6 +638,11 @@ const getDefaultHealthCondition = (name) => {
 .report-icon {
   background: linear-gradient(135deg, #dbeafe, #bfdbfe);
   color: #1e40af;
+}
+
+.health-icon {
+  background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+  color: #15803d;
 }
 
 .action-content {
