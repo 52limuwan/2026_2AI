@@ -93,7 +93,16 @@
 
       <!-- 警报记录 -->
       <div class="card" v-if="alerts.length > 0">
-        <div class="section-title">警报记录</div>
+        <div class="alert-header">
+          <div class="section-title">警报记录</div>
+          <button class="clear-all-btn" @click="clearAllAlerts">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            清空
+          </button>
+        </div>
         <div class="alert-list">
           <div 
             v-for="alert in alerts" 
@@ -105,6 +114,12 @@
               <div class="alert-message">{{ alert.message }}</div>
               <div class="alert-time muted">{{ alert.time }}</div>
             </div>
+            <button class="delete-btn" @click="deleteAlert(alert.id)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -136,6 +151,47 @@ const showHWave = ref(true)
 
 // 警报列表
 const alerts = ref([])
+
+// 本地存储的key
+const ALERTS_STORAGE_KEY = 'health_monitor_alerts'
+
+// 从localStorage加载警报记录
+const loadAlerts = () => {
+  try {
+    const stored = localStorage.getItem(ALERTS_STORAGE_KEY)
+    if (stored) {
+      alerts.value = JSON.parse(stored)
+    }
+  } catch (err) {
+    console.error('加载警报记录失败:', err)
+  }
+}
+
+// 保存警报记录到localStorage
+const saveAlerts = () => {
+  try {
+    localStorage.setItem(ALERTS_STORAGE_KEY, JSON.stringify(alerts.value))
+  } catch (err) {
+    console.error('保存警报记录失败:', err)
+  }
+}
+
+// 删除单条警报
+const deleteAlert = (id) => {
+  const index = alerts.value.findIndex(alert => alert.id === id)
+  if (index !== -1) {
+    alerts.value.splice(index, 1)
+    saveAlerts()
+  }
+}
+
+// 清空所有警报
+const clearAllAlerts = () => {
+  if (confirm('确定要清空所有警报记录吗？')) {
+    alerts.value = []
+    saveAlerts()
+  }
+}
 
 // Canvas引用
 const bWaveCanvas = ref(null)
@@ -255,7 +311,8 @@ const addAlert = (message) => {
     type: message.includes('异常') ? 'critical' : 'warning'
   }
   alerts.value.unshift(alert)
-  if (alerts.value.length > 10) alerts.value.pop()
+  if (alerts.value.length > 50) alerts.value.pop() // 最多保留50条
+  saveAlerts() // 保存到localStorage
 }
 
 // 绘制波形图
@@ -338,6 +395,7 @@ const initCanvas = () => {
 }
 
 onMounted(() => {
+  loadAlerts() // 加载历史警报记录
   initCanvas()
   connectWebSocket()
   window.addEventListener('resize', initCanvas)
@@ -557,6 +615,40 @@ onUnmounted(() => {
   border: 1px solid var(--border);
 }
 
+/* 警报记录头部 */
+.alert-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.clear-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--ghost-bg);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-all-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.clear-all-btn:hover {
+  background: #fef2f2;
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
 .alert-list {
   display: flex;
   flex-direction: column;
@@ -564,14 +656,27 @@ onUnmounted(() => {
 }
 
 .alert-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 10px 12px;
   background: var(--ghost-bg);
   border-radius: 8px;
   border: 1px solid var(--border);
+  transition: all 0.2s;
+}
+
+.alert-item:hover {
+  background: var(--card);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .alert-item.critical {
   background: #fef2f2;
+}
+
+.alert-item.critical:hover {
+  background: #fee2e2;
 }
 
 .alert-content {
@@ -588,5 +693,30 @@ onUnmounted(() => {
 
 .alert-time {
   font-size: 12px;
+}
+
+.delete-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.delete-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.delete-btn:hover {
+  background: #fef2f2;
+  color: #ef4444;
 }
 </style>
