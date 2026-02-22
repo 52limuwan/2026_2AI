@@ -719,14 +719,11 @@ const stopStreaming = () => {
 // 保存消息到数据库
 const saveMessageToDatabase = async (message) => {
   try {
-    // 如果没有会话ID，先创建一个
-    if (!conversationId.value) {
-      const result = await createNewConversation()
-      conversationId.value = result.conversationId
-    }
+    // 如果没有会话ID，使用临时ID（等待 Dify 返回真实ID后会更新）
+    const currentConvId = conversationId.value || 'temp_' + Date.now()
     
     await saveWebSocketMessage({
-      conversationId: conversationId.value,
+      conversationId: currentConvId,
       role: message.role,
       content: message.content,
       timestamp: message.timestamp
@@ -925,20 +922,19 @@ const handleSend = async () => {
   isThinking.value = true
   
   try {
-    // 文字聊天使用 dify API
+    // 文字聊天使用 dify API（阻塞模式）
     console.log('使用 dify API 发送文字消息')
-    
-    // 如果没有会话ID，先创建一个
-    if (!conversationId.value) {
-      const result = await createNewConversation()
-      conversationId.value = result.conversationId
-    }
     
     // 通过 dify API 发送消息
     const response = await sendXiaozhiMessage({
-      conversationId: conversationId.value,
+      conversationId: conversationId.value || '',
       message: content
     })
+    
+    // 更新会话ID
+    if (response.conversationId) {
+      conversationId.value = response.conversationId
+    }
     
     isThinking.value = false
     
@@ -956,7 +952,7 @@ const handleSend = async () => {
     // 保存 AI 回复到数据库
     saveMessageToDatabase(aiMessage)
     
-    // 流式输出效果
+    // 模拟流式输出效果
     const messageIndex = messages.value.length - 1
     await streamText(response.reply || '抱歉，我现在无法回答。', messageIndex)
     
@@ -1298,8 +1294,8 @@ onMounted(async () => {
     console.error('加载聊天记录失败:', error)
   }
   
-  // 连接 WebSocket
-  await connectWebSocket()
+  // 不再自动连接 WebSocket，只在语音通话时按需连接
+  // await connectWebSocket()
   
   // 监听来自Layout的事件
   window.addEventListener('ai-open-history', handleHistoryEvent)

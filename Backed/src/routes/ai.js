@@ -1,4 +1,6 @@
 const express = require('express');
+const axios = require('axios');
+const crypto = require('crypto');
 const db = require('../db');
 const { authRequired, requireRole } = require('../middleware/auth');
 const { success, failure } = require('../utils/respond');
@@ -756,8 +758,8 @@ router.post('/conversations/new', authRequired, async (req, res) => {
   try {
     const userId = req.user.id;
     
-    // 生成新的对话 ID
-    const conversationId = `conv_${userId}_${Date.now()}`;
+    // 生成新的对话 ID（使用 UUID v4 格式）
+    const conversationId = crypto.randomUUID();
 
     console.log('\n[AI] 创建新对话');
     console.log(`  用户 ID: ${userId}`);
@@ -955,34 +957,51 @@ router.post('/chat/client', authRequired, requireRole('client'), async (req, res
     const difyApiKey = process.env.DIFY_API_KEY;
     const difyApiUrl = process.env.DIFY_API_URL || 'https://api.dify.ai/v1';
     
+    console.log(`  Dify API URL: ${difyApiUrl}`);
+    console.log(`  Dify API Key: ${difyApiKey ? difyApiKey.substring(0, 10) + '...' : '未配置'}`);
+    
     if (!difyApiKey || difyApiKey.includes('your_')) {
       console.error('dify API Key 未配置');
       return failure(res, 'AI 服务配置错误', 500);
     }
-
-    const axios = require('axios');
     
-    // 构建 dify API 请求
+    // 构建 dify API 请求体
+    const requestBody = {
+      inputs: {},
+      query: message,
+      response_mode: 'blocking',
+      user: `user_${userId}`
+    };
+    
+    // 只有当 conversationId 存在且有效时才添加
+    if (conversationId && conversationId.trim()) {
+      requestBody.conversation_id = conversationId;
+    }
+    
+    console.log(`  请求 URL: ${difyApiUrl}/chat-messages`);
+    console.log(`  请求体:`, JSON.stringify(requestBody, null, 2));
+    
+    const startTime = Date.now();
+    
+    // 使用阻塞模式（先让功能正常工作）
     const difyResponse = await axios.post(
       `${difyApiUrl}/chat-messages`,
-      {
-        inputs: {},
-        query: message,
-        response_mode: 'blocking',
-        conversation_id: conversationId || '',
-        user: `user_${userId}`
-      },
+      requestBody,
       {
         headers: {
           'Authorization': `Bearer ${difyApiKey}`,
           'Content-Type': 'application/json'
         },
-        timeout: 30000
+        timeout: 60000
       }
     );
+    
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    console.log(`  Dify 响应时间: ${duration} 秒`);
 
     const reply = difyResponse.data.answer || '抱歉，我现在无法回答。';
-    const newConversationId = difyResponse.data.conversation_id || conversationId || `conv_client_${Date.now()}`;
+    const newConversationId = difyResponse.data.conversation_id;
 
     console.log(`  回复长度: ${reply.length}`);
     console.log(`  新对话ID: ${newConversationId}`);
@@ -1021,19 +1040,23 @@ router.post('/chat/guardian', authRequired, requireRole('guardian'), async (req,
       console.error('dify API Key 未配置');
       return failure(res, 'AI 服务配置错误', 500);
     }
-
-    const axios = require('axios');
     
-    // 构建 dify API 请求
+    // 构建 dify API 请求体
+    const requestBody = {
+      inputs: {},
+      query: message,
+      response_mode: 'blocking',
+      user: `guardian_${userId}`
+    };
+    
+    // 只有当 conversationId 存在且有效时才添加
+    if (conversationId && conversationId.trim()) {
+      requestBody.conversation_id = conversationId;
+    }
+    
     const difyResponse = await axios.post(
       `${difyApiUrl}/chat-messages`,
-      {
-        inputs: {},
-        query: message,
-        response_mode: 'blocking',
-        conversation_id: conversationId || '',
-        user: `guardian_${userId}`
-      },
+      requestBody,
       {
         headers: {
           'Authorization': `Bearer ${difyApiKey}`,
@@ -1044,7 +1067,7 @@ router.post('/chat/guardian', authRequired, requireRole('guardian'), async (req,
     );
 
     const reply = difyResponse.data.answer || '抱歉，我现在无法回答。';
-    const newConversationId = difyResponse.data.conversation_id || conversationId || `conv_guardian_${Date.now()}`;
+    const newConversationId = difyResponse.data.conversation_id;
 
     console.log(`  回复长度: ${reply.length}`);
     console.log(`  新对话ID: ${newConversationId}`);
@@ -1083,19 +1106,23 @@ router.post('/chat/gov', authRequired, requireRole('gov'), async (req, res) => {
       console.error('dify API Key 未配置');
       return failure(res, 'AI 服务配置错误', 500);
     }
-
-    const axios = require('axios');
     
-    // 构建 dify API 请求
+    // 构建 dify API 请求体
+    const requestBody = {
+      inputs: {},
+      query: message,
+      response_mode: 'blocking',
+      user: `gov_${userId}`
+    };
+    
+    // 只有当 conversationId 存在且有效时才添加
+    if (conversationId && conversationId.trim()) {
+      requestBody.conversation_id = conversationId;
+    }
+    
     const difyResponse = await axios.post(
       `${difyApiUrl}/chat-messages`,
-      {
-        inputs: {},
-        query: message,
-        response_mode: 'blocking',
-        conversation_id: conversationId || '',
-        user: `gov_${userId}`
-      },
+      requestBody,
       {
         headers: {
           'Authorization': `Bearer ${difyApiKey}`,
@@ -1106,7 +1133,7 @@ router.post('/chat/gov', authRequired, requireRole('gov'), async (req, res) => {
     );
 
     const reply = difyResponse.data.answer || '抱歉，我现在无法回答。';
-    const newConversationId = difyResponse.data.conversation_id || conversationId || `conv_gov_${Date.now()}`;
+    const newConversationId = difyResponse.data.conversation_id;
 
     console.log(`  回复长度: ${reply.length}`);
     console.log(`  新对话ID: ${newConversationId}`);
