@@ -50,20 +50,28 @@
           </div>
         </div>
         
-        <!-- Agent Skill 技能识别动画 - 完全重写 -->
-        <transition name="skill-blur">
-          <div v-if="showSkillIndicator && isThinking" class="skill-indicator-container">
-            <transition name="skill-text-blur" mode="out-in">
-              <div class="skill-indicator" :key="currentSkillText">
-                <svg class="skill-book-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Agent Skill 技能调用展示 -->
+        <div v-if="skillCallSteps.length > 0" class="skill-call-container">
+          <div
+            v-for="(step, index) in skillCallSteps"
+            :key="index"
+            class="skill-call-item"
+          >
+            <div class="skill-call-header">
+              <div class="skill-call-icon">
+                <svg v-if="step.type === 'read'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+                  <path fill="currentColor" d="M660.48 661.205333a38.4 38.4 0 0 1 0 76.8H363.52a38.4 38.4 0 0 1 0-76.8h296.96zM526.336 473.6a38.4 38.4 0 0 1 0 76.8H363.52a38.4 38.4 0 0 1 0-76.8h162.773333z"></path>
+                  <path fill="currentColor" d="M562.005333 89.6c32.810667 0 64.298667 13.056 87.466667 36.266667l163.370667 163.285333c23.210667 23.210667 36.266667 54.698667 36.266666 87.509333V768A166.4 166.4 0 0 1 682.666667 934.4H341.333333A166.442667 166.442667 0 0 1 174.933333 768V256c0-91.904 74.496-166.4 166.4-166.4h220.672z"></path>
                 </svg>
-                <span class="skill-indicator-text">{{ currentSkillText }}</span>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+                  <path fill="currentColor" d="M512 384a128 128 0 1 1 0 256 128 128 0 0 1 0-256z"></path>
+                </svg>
               </div>
-            </transition>
+              <span class="skill-call-title">{{ step.title }}</span>
+              <span v-if="step.skillName" class="skill-call-name">{{ step.skillName }}</span>
+            </div>
           </div>
-        </transition>
+        </div>
 
         <!-- AI 正在输入中（备用，流式输出时不显示） -->
         <div v-if="isLoading && !isStreaming && !isThinking" class="message-item message-ai">
@@ -247,15 +255,14 @@ const showWelcomeMessage = ref(true)
 const showHistoryDialog = ref(false)
 const conversations = ref([])
 
-// Agent Skill 技能识别相关状态
+// Agent Skill 技能调用展示相关状态
 const activeSkill = ref('')
-const currentSkillText = ref('')
-const showSkillIndicator = ref(false)
+const skillCallSteps = ref([])
 let skillAnimationTimer = null
 
-// 技能关键词映射 - 全面扩充版
+// 技能关键词映射 - 与后端Skills文件完全对应
 const skillKeywords = {
-  '营养师': [
+  '营养师 - 基础营养咨询': [
     // 基础营养
     '营养', '健康', '饮食', '菜品', '搭配', '均衡', '食物', '吃什么', '适合', '补充', '缺乏',
     // 营养素
@@ -270,7 +277,7 @@ const skillKeywords = {
     '增重', '减重', '长胖', '瘦了', '体重', '贫血', '骨质疏松', '便秘', '腹泻', '胀气'
   ],
   
-  '中医养生师': [
+  '中医养生师 - 传统养生调理': [
     // 中医基础
     '中医', '养生', '调理', '体质', '气血', '经络', '穴位', '食疗', '中药', '汤药',
     // 体质类型
@@ -285,7 +292,7 @@ const skillKeywords = {
     '体寒', '怕冷', '怕热', '出汗', '盗汗', '手脚冰凉', '口干', '口苦', '舌苔', '脉象'
   ],
   
-  '慢病管理师': [
+  '慢病管理师 - 慢性病管理': [
     // 三高
     '高血压', '糖尿病', '高血脂', '三高', '血糖', '血压', '血脂', '胆固醇', '甘油三酯',
     // 心脑血管
@@ -300,7 +307,7 @@ const skillKeywords = {
     '血压高', '血糖高', '血脂高', '指标高', '超标', '不正常', '控制不住', '反复'
   ],
   
-  '运动康复师': [
+  '运动康复师 - 适老运动指导': [
     // 运动类型
     '运动', '锻炼', '康复', '健身', '太极', '散步', '活动', '走路', '慢跑', '游泳', '广场舞',
     // 身体部位
@@ -317,7 +324,7 @@ const skillKeywords = {
     '怎么动', '能不能动', '动不了', '不敢动', '动了疼', '僵硬', '不灵活', '没劲'
   ],
   
-  '心理咨询师': [
+  '心理咨询师 - 心理健康关怀': [
     // 情绪问题
     '心理', '情绪', '焦虑', '抑郁', '孤独', '烦躁', '不开心', '想不开', '心情', '心烦', '郁闷', '寂寞',
     // 睡眠问题
@@ -336,7 +343,7 @@ const skillKeywords = {
     '心里难受', '想哭', '委屈', '憋屈', '想不通', '放不下', '看不开', '钻牛角尖'
   ],
   
-  '膳食搭配师': [
+  '膳食搭配师 - 食谱与烹饪': [
     // 餐次
     '食谱', '菜谱', '一日三餐', '早餐', '午餐', '晚餐', '加餐', '夜宵', '点心', '零食',
     // 烹饪方法
@@ -355,7 +362,7 @@ const skillKeywords = {
     '吃什么好', '做什么菜', '今天吃啥', '换换口味', '吃腻了', '想吃', '不想吃'
   ],
   
-  '用药指导师': [
+  '用药指导师 - 安全用药指导': [
     // 用药基础
     '药物', '吃药', '服药', '用药', '药品', '药', '西药', '中成药', '保健品',
     // 用药时间
@@ -374,7 +381,7 @@ const skillKeywords = {
     '药物反应', '吃了不舒服', '管用吗', '要吃多久', '能停吗', '必须吃吗', '依赖'
   ],
   
-  '季节养护师': [
+  '季节养护师 - 四季养生': [
     // 四季
     '春季', '夏季', '秋季', '冬季', '春天', '夏天', '秋天', '冬天', '季节', '换季',
     // 二十四节气
@@ -394,7 +401,7 @@ const skillKeywords = {
     '穿什么', '怎么穿', '加衣服', '减衣服', '注意什么', '小心什么'
   ],
   
-  '居家护理师': [
+  '居家护理师 - 日常护理指导': [
     // 基础护理
     '护理', '照顾', '照料', '料理', '日常护理', '生活护理', '个人卫生',
     // 日常起居
@@ -415,7 +422,7 @@ const skillKeywords = {
     '怎么照顾', '怎么护理', '注意什么', '怎么办', '正常吗', '要紧吗', '严重吗'
   ],
   
-  '健康档案师': [
+  '健康档案师 - 健康数据管理': [
     // 体检相关
     '体检', '检查', '化验', '报告', '体检报告', '检查报告', '化验单', '结果',
     // 常见指标
@@ -433,6 +440,24 @@ const skillKeywords = {
     '风险', '危险', '预警', '注意', '警惕', '预防', '筛查', '早期',
     // 口语化
     '看不懂', '什么意思', '严重吗', '要紧吗', '有问题吗', '需要治疗吗', '怎么办'
+  ],
+  
+  '数据分析师 - 用户月报分析': [
+    // 月报相关
+    '月报', '月度', '本月', '上月', '这个月', '月度报告', '月度分析', '月度数据',
+    // 数据分析
+    '分析', '统计', '汇总', '总结', '报表', '数据', '趋势',
+    // 口语化
+    '这个月怎么样', '月度情况', '月度总结', '月度健康'
+  ],
+  
+  '数据分析师 - 用户周报分析': [
+    // 周报相关
+    '周报', '本周', '上周', '这周', '这一周', '周度报告', '周度分析', '周度数据',
+    // 数据分析
+    '分析', '统计', '汇总', '总结', '报表', '数据', '趋势',
+    // 口语化
+    '这周怎么样', '周度情况', '周度总结', '周度健康'
   ]
 }
 
@@ -743,55 +768,69 @@ const streamText = (text, messageIndex) => {
   })
 }
 
-// 识别用户消息中的技能
+// 识别用户消息中的技能 - 改进版：基于匹配度评分
 const detectSkill = (message) => {
+  let bestSkill = ''
+  let maxScore = 0
+  
+  // 遍历所有技能，计算每个技能的匹配分数
   for (const [skill, keywords] of Object.entries(skillKeywords)) {
+    let score = 0
+    let matchedKeywords = []
+    
+    // 计算该技能匹配了多少个关键词
     for (const keyword of keywords) {
       if (message.includes(keyword)) {
-        return skill
+        score++
+        matchedKeywords.push(keyword)
       }
     }
+    
+    // 如果这个技能的匹配分数更高，更新最佳技能
+    if (score > maxScore) {
+      maxScore = score
+      bestSkill = skill
+    }
   }
-  return ''
+  
+  // 只有匹配分数大于0才返回技能，否则返回空
+  return maxScore > 0 ? bestSkill : ''
 }
 
-// 启动技能动画
+// 启动技能调用展示
 const startSkillAnimation = () => {
-  currentSkillText.value = ''
-  showSkillIndicator.value = false
+  skillCallSteps.value = []
   
   // 清除之前的定时器
   if (skillAnimationTimer) {
     clearTimeout(skillAnimationTimer)
   }
   
-  // 步骤1: 延迟3秒后模糊出现"查看技能"
+  // 步骤1: 延迟1秒后显示"读取技能"
   setTimeout(() => {
-    currentSkillText.value = `查看技能 ${activeSkill.value}`
-    showSkillIndicator.value = true
-  }, 3000)
+    skillCallSteps.value.push({
+      type: 'read',
+      title: '读取',
+      skillName: activeSkill.value
+    })
+  }, 1000)
   
-  // 步骤2: 模糊替换为"读取技能"
+  // 步骤2: 再延迟1.5秒后显示"使用技能"
   setTimeout(() => {
-    currentSkillText.value = `读取技能 ${activeSkill.value}`
-  }, 4800)
+    skillCallSteps.value.push({
+      type: 'use',
+      title: '使用技能',
+      skillName: activeSkill.value
+    })
+  }, 2500)
   
-  // 步骤3: 模糊消失
-  setTimeout(() => {
-    showSkillIndicator.value = false
-    // 等待动画完成后清空
-    setTimeout(() => {
-      activeSkill.value = ''
-      currentSkillText.value = ''
-    }, 600)
-  }, 6400)
+  // 不再清空，让技能调用步骤一直保留
 }
 
-// 停止技能动画
+// 停止技能调用展示
 const stopSkillAnimation = () => {
+  // 不清空 skillCallSteps，让它保留在界面上
   activeSkill.value = ''
-  currentSkillText.value = ''
-  showSkillIndicator.value = false
   if (skillAnimationTimer) {
     clearTimeout(skillAnimationTimer)
     skillAnimationTimer = null
@@ -1613,91 +1652,55 @@ onMounted(async () => {
   }
 }
 
-/* Agent Skill 技能识别动画 - 完全重写 */
-.skill-indicator-container {
+/* Agent Skill 技能调用展示 */
+.skill-call-container {
   display: flex;
-  justify-content: flex-start;
-  width: 100%;
-  margin-top: 4px;
-  min-height: 24px;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  animation: fadeIn 0.3s ease;
 }
 
-.skill-indicator {
+.skill-call-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition: all 0.2s ease;
+}
+
+.skill-call-item:hover {
+  background: var(--bg);
+}
+
+.skill-call-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  background: transparent;
-  border-radius: 6px;
+  gap: 8px;
 }
 
-.skill-book-icon {
-  width: 14px;
-  height: 14px;
-  color: var(--accent);
+.skill-call-icon {
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
-}
-
-.skill-indicator-text {
-  font-size: calc(var(--fs-body) * var(--font-scale) * 0.8);
   color: var(--muted);
-  white-space: nowrap;
 }
 
-/* 外层容器的模糊出现和消失 */
-.skill-blur-enter-active,
-.skill-blur-leave-active {
-  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-              filter 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-              transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+.skill-call-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
-.skill-blur-enter-from {
-  opacity: 0;
-  filter: blur(10px);
-  transform: translateY(8px);
+.skill-call-title {
+  font-size: calc(var(--fs-body) * var(--font-scale) * 0.9);
+  color: var(--text);
+  font-weight: 500;
 }
 
-.skill-blur-enter-to {
-  opacity: 1;
-  filter: blur(0px);
-  transform: translateY(0);
-}
-
-.skill-blur-leave-from {
-  opacity: 1;
-  filter: blur(0px);
-  transform: translateY(0);
-}
-
-.skill-blur-leave-to {
-  opacity: 0;
-  filter: blur(10px);
-  transform: translateY(-8px);
-}
-
-/* 内层文字的模糊替换 */
-.skill-text-blur-enter-active,
-.skill-text-blur-leave-active {
-  transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1),
-              filter 0.5s cubic-bezier(0.4, 0, 0.2, 1),
-              transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.skill-text-blur-leave-active {
-  position: absolute;
-}
-
-.skill-text-blur-enter-from {
-  opacity: 0;
-  filter: blur(8px);
-  transform: translateY(10px);
-}
-
-.skill-text-blur-enter-to {
-  opacity: 1;
-  filter: blur(0px);
-  transform: translateY(0);
+.skill-call-name {
+  font-size: calc(var(--fs-body) * var(--font-scale) * 0.85);
+  color: var(--muted);
+  margin-left: auto;
 }
 
 .skill-text-blur-leave-from {

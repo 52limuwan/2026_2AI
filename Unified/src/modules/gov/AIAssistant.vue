@@ -50,20 +50,28 @@
           </div>
         </div>
         
-        <!-- Agent Skill 技能识别动画 -->
-        <transition name="skill-blur">
-          <div v-if="showSkillIndicator && isThinking" class="skill-indicator-container">
-            <transition name="skill-text-blur" mode="out-in">
-              <div class="skill-indicator" :key="currentSkillText">
-                <svg class="skill-book-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Agent Skill 技能调用展示 -->
+        <div v-if="skillCallSteps.length > 0" class="skill-call-container">
+          <div
+            v-for="(step, index) in skillCallSteps"
+            :key="index"
+            class="skill-call-item"
+          >
+            <div class="skill-call-header">
+              <div class="skill-call-icon">
+                <svg v-if="step.type === 'read'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+                  <path fill="currentColor" d="M660.48 661.205333a38.4 38.4 0 0 1 0 76.8H363.52a38.4 38.4 0 0 1 0-76.8h296.96zM526.336 473.6a38.4 38.4 0 0 1 0 76.8H363.52a38.4 38.4 0 0 1 0-76.8h162.773333z"></path>
+                  <path fill="currentColor" d="M562.005333 89.6c32.810667 0 64.298667 13.056 87.466667 36.266667l163.370667 163.285333c23.210667 23.210667 36.266667 54.698667 36.266666 87.509333V768A166.4 166.4 0 0 1 682.666667 934.4H341.333333A166.442667 166.442667 0 0 1 174.933333 768V256c0-91.904 74.496-166.4 166.4-166.4h220.672z"></path>
                 </svg>
-                <span class="skill-indicator-text">{{ currentSkillText }}</span>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+                  <path fill="currentColor" d="M512 384a128 128 0 1 1 0 256 128 128 0 0 1 0-256z"></path>
+                </svg>
               </div>
-            </transition>
+              <span class="skill-call-title">{{ step.title }}</span>
+              <span v-if="step.skillName" class="skill-call-name">{{ step.skillName }}</span>
+            </div>
           </div>
-        </transition>
+        </div>
 
         <!-- AI 正在输入中（备用，流式输出时不显示） -->
         <div v-if="isLoading && !isStreaming && !isThinking" class="message-item message-ai">
@@ -247,10 +255,9 @@ const showWelcomeMessage = ref(true)
 const showHistoryDialog = ref(false)
 const conversations = ref([])
 
-// Agent Skill 技能识别相关状态
+// Agent Skill 技能调用展示相关状态
 const activeSkill = ref('')
-const currentSkillText = ref('')
-const showSkillIndicator = ref(false)
+const skillCallSteps = ref([])
 let skillAnimationTimer = null
 
 // Gov端技能关键词映射 - 全面扩充版
@@ -773,50 +780,63 @@ const streamText = (text, messageIndex) => {
   })
 }
 
-// 识别用户消息中的技能
+// 识别用户消息中的技能 - 改进版：基于匹配度评分
 const detectSkill = (message) => {
+  let bestSkill = ''
+  let maxScore = 0
+  
+  // 遍历所有技能，计算每个技能的匹配分数
   for (const [skill, keywords] of Object.entries(skillKeywords)) {
+    let score = 0
+    let matchedKeywords = []
+    
+    // 计算该技能匹配了多少个关键词
     for (const keyword of keywords) {
       if (message.includes(keyword)) {
-        return skill
+        score++
+        matchedKeywords.push(keyword)
       }
     }
+    
+    // 如果这个技能的匹配分数更高，更新最佳技能
+    if (score > maxScore) {
+      maxScore = score
+      bestSkill = skill
+    }
   }
-  return ''
+  
+  // 只有匹配分数大于0才返回技能，否则返回空
+  return maxScore > 0 ? bestSkill : ''
 }
 
-// 启动技能动画
+// 启动技能调用展示
 const startSkillAnimation = () => {
-  currentSkillText.value = ''
-  showSkillIndicator.value = false
+  skillCallSteps.value = []
   
   if (skillAnimationTimer) {
     clearTimeout(skillAnimationTimer)
   }
   
   setTimeout(() => {
-    currentSkillText.value = `查看技能 ${activeSkill.value}`
-    showSkillIndicator.value = true
-  }, 3000)
+    skillCallSteps.value.push({
+      type: 'read',
+      title: '读取',
+      skillName: activeSkill.value
+    })
+  }, 1000)
   
   setTimeout(() => {
-    currentSkillText.value = `读取技能 ${activeSkill.value}`
-  }, 4800)
-  
-  setTimeout(() => {
-    showSkillIndicator.value = false
-    setTimeout(() => {
-      activeSkill.value = ''
-      currentSkillText.value = ''
-    }, 600)
-  }, 6400)
+    skillCallSteps.value.push({
+      type: 'use',
+      title: '使用技能',
+      skillName: activeSkill.value
+    })
+  }, 2500)
 }
 
-// 停止技能动画
+// 停止技能调用展示
 const stopSkillAnimation = () => {
   activeSkill.value = ''
-  currentSkillText.value = ''
-  showSkillIndicator.value = false
   if (skillAnimationTimer) {
     clearTimeout(skillAnimationTimer)
     skillAnimationTimer = null
@@ -1900,103 +1920,55 @@ onMounted(async () => {
   color: var(--muted);
 }
 
-/* Agent Skill 技能识别动画 */
-.skill-indicator-container {
+/* Agent Skill 技能调用展示 */
+.skill-call-container {
   display: flex;
-  justify-content: flex-start;
-  width: 100%;
-  margin-top: 4px;
-  min-height: 24px;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  animation: fadeIn 0.3s ease;
 }
 
-.skill-indicator {
+.skill-call-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition: all 0.2s ease;
+}
+
+.skill-call-item:hover {
+  background: var(--bg);
+}
+
+.skill-call-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  background: transparent;
-  border-radius: 6px;
+  gap: 8px;
 }
 
-.skill-book-icon {
-  width: 14px;
-  height: 14px;
-  color: var(--accent);
+.skill-call-icon {
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
-}
-
-.skill-indicator-text {
-  font-size: calc(var(--fs-body) * var(--font-scale) * 0.8);
   color: var(--muted);
-  white-space: nowrap;
 }
 
-/* 外层容器的模糊出现和消失 */
-.skill-blur-enter-active,
-.skill-blur-leave-active {
-  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-              filter 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-              transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+.skill-call-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
-.skill-blur-enter-from {
-  opacity: 0;
-  filter: blur(10px);
-  transform: translateY(8px);
+.skill-call-title {
+  font-size: calc(var(--fs-body) * var(--font-scale) * 0.9);
+  color: var(--text);
+  font-weight: 500;
 }
 
-.skill-blur-enter-to {
-  opacity: 1;
-  filter: blur(0px);
-  transform: translateY(0);
-}
-
-.skill-blur-leave-from {
-  opacity: 1;
-  filter: blur(0px);
-  transform: translateY(0);
-}
-
-.skill-blur-leave-to {
-  opacity: 0;
-  filter: blur(10px);
-  transform: translateY(-8px);
-}
-
-/* 内层文字的模糊替换 */
-.skill-text-blur-enter-active,
-.skill-text-blur-leave-active {
-  transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1),
-              filter 0.5s cubic-bezier(0.4, 0, 0.2, 1),
-              transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.skill-text-blur-leave-active {
-  position: absolute;
-}
-
-.skill-text-blur-enter-from {
-  opacity: 0;
-  filter: blur(8px);
-  transform: translateY(10px);
-}
-
-.skill-text-blur-enter-to {
-  opacity: 1;
-  filter: blur(0px);
-  transform: translateY(0);
-}
-
-.skill-text-blur-leave-from {
-  opacity: 1;
-  filter: blur(0px);
-  transform: translateY(0);
-}
-
-.skill-text-blur-leave-to {
-  opacity: 0;
-  filter: blur(8px);
-  transform: translateY(-10px);
+.skill-call-name {
+  font-size: calc(var(--fs-body) * var(--font-scale) * 0.85);
+  color: var(--muted);
+  margin-left: auto;
 }
 
 </style>
