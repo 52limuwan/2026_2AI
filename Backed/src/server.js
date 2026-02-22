@@ -99,6 +99,7 @@ async function bootstrap() {
     app.use('/api/notifications', require('./routes/notifications'));
     app.use('/api/reports', require('./routes/reports'));
     app.use('/api/ai', require('./routes/ai'));
+    app.use('/api/skills', require('./routes/skills'));
 
     // 根路径
     app.get('/', (_req, res) => {

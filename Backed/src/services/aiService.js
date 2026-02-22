@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { loadSkillPrompts } = require('./skillLoader');
 
 /**
  * 调用 OpenAI API 生成饮食分析报告
@@ -31,30 +32,51 @@ async function generateDietAnalysis(nutritionData, period = '本周', role = 'cl
     throw new Error(`请在 .env 文件中配置有效的 ${prefix}OPENAI_API_KEY`);
   }
 
-  // 系统提示词
-  const systemPrompt = process.env[`${prefix}AI_SYSTEM_PROMPT`] || 
+  // 从Skills文件夹加载提示词
+  const reportType = period === '本周' ? 'weekly' : 'monthly';
+  const skillId = `${role}-${reportType}`;
+  
+  console.log(`  - 使用技能: ${skillId}`);
+  
+  // 准备变量
+  const variables = {
+    calories: Math.round(nutritionData.calories || 0),
+    protein: Math.round((nutritionData.protein || 0) * 10) / 10,
+    fat: Math.round((nutritionData.fat || 0) * 10) / 10,
+    carbs: Math.round((nutritionData.carbs || 0) * 10) / 10,
+    fiber: Math.round((nutritionData.fiber || 0) * 10) / 10,
+    calcium: Math.round((nutritionData.calcium || 0) * 10) / 10,
+    vitaminC: Math.round((nutritionData.vitaminC || 0) * 10) / 10,
+    iron: Math.round((nutritionData.iron || 0) * 10) / 10,
+    dailyTarget: nutritionData.dailyTarget || 2000,
+    achievement: nutritionData.achievement || 0,
+    newDishes: nutritionData.newDishes || 0
+  };
+  
+  // 加载技能提示词
+  const { systemPrompt, userPrompt } = await loadSkillPrompts(skillId, variables);
+  
+  // 如果技能文件不存在，使用默认提示词
+  const finalSystemPrompt = systemPrompt || 
     (role === 'guardian' 
       ? '你是一位专业的营养师和健康顾问，专门为家属提供关于老年人饮食健康的专业分析。'
       : '你是一位专业的营养师和健康顾问。你的任务是根据用户的饮食数据，提供科学、实用的营养分析和健康建议。');
+  
+  const finalUserPrompt = userPrompt || `请根据以下饮食数据进行分析并提供建议：
 
-  // 根据周报/月报选择不同的用户提示词模板
-  const promptType = period === '本周' ? 'WEEKLY' : 'MONTHLY';
-  const userPromptTemplate = process.env[`${prefix}AI_${promptType}_PROMPT`] ||
-    `请根据以下饮食数据进行分析并提供建议：
+时间范围：${period}
+总热量：${variables.calories} kcal
+蛋白质：${variables.protein} g
+脂肪：${variables.fat} g
+碳水化合物：${variables.carbs} g
+膳食纤维：${variables.fiber} g
+钙：${variables.calcium} mg
+维生素C：${variables.vitaminC} mg
+铁：${variables.iron} mg
 
-时间范围：{period}
-总热量：{calories} kcal
-蛋白质：{protein} g
-脂肪：{fat} g
-碳水化合物：{carbs} g
-膳食纤维：{fiber} g
-钙：{calcium} mg
-维生素C：{vitaminC} mg
-铁：{iron} mg
-
-每日热量目标：{dailyTarget} kcal
-目标达成率：{achievement}%
-饮食多样性：尝试了 {newDishes} 种不同菜品
+每日热量目标：${variables.dailyTarget} kcal
+目标达成率：${variables.achievement}%
+饮食多样性：尝试了 ${variables.newDishes} 种不同菜品
 
 请提供：
 1. 营养摄入评估（是否均衡、是否达标）
@@ -64,38 +86,24 @@ async function generateDietAnalysis(nutritionData, period = '本周', role = 'cl
 
 请用温和、鼓励的语气，建议要具体可行。`;
 
-  // 替换模板中的变量（不再需要 {period}，因为已经在模板中区分了）
-  const userPrompt = userPromptTemplate
-    .replace('{calories}', Math.round(nutritionData.calories || 0))
-    .replace('{protein}', Math.round((nutritionData.protein || 0) * 10) / 10)
-    .replace('{fat}', Math.round((nutritionData.fat || 0) * 10) / 10)
-    .replace('{carbs}', Math.round((nutritionData.carbs || 0) * 10) / 10)
-    .replace('{fiber}', Math.round((nutritionData.fiber || 0) * 10) / 10)
-    .replace('{calcium}', Math.round((nutritionData.calcium || 0) * 10) / 10)
-    .replace('{vitaminC}', Math.round((nutritionData.vitaminC || 0) * 10) / 10)
-    .replace('{iron}', Math.round((nutritionData.iron || 0) * 10) / 10)
-    .replace('{dailyTarget}', nutritionData.dailyTarget || 2000)
-    .replace('{achievement}', nutritionData.achievement || 0)
-    .replace('{newDishes}', nutritionData.newDishes || 0);
-
   console.log('\n营养数据:');
-  console.log(`  - 总热量: ${Math.round(nutritionData.calories || 0)} kcal`);
-  console.log(`  - 蛋白质: ${Math.round((nutritionData.protein || 0) * 10) / 10} g`);
-  console.log(`  - 脂肪: ${Math.round((nutritionData.fat || 0) * 10) / 10} g`);
-  console.log(`  - 碳水化合物: ${Math.round((nutritionData.carbs || 0) * 10) / 10} g`);
-  console.log(`  - 膳食纤维: ${Math.round((nutritionData.fiber || 0) * 10) / 10} g`);
-  console.log(`  - 钙: ${Math.round((nutritionData.calcium || 0) * 10) / 10} mg`);
-  console.log(`  - 维生素C: ${Math.round((nutritionData.vitaminC || 0) * 10) / 10} mg`);
-  console.log(`  - 铁: ${Math.round((nutritionData.iron || 0) * 10) / 10} mg`);
-  console.log(`  - 每日目标: ${nutritionData.dailyTarget || 2000} kcal`);
-  console.log(`  - 目标达成率: ${nutritionData.achievement || 0}%`);
-  console.log(`  - 尝试菜品数: ${nutritionData.newDishes || 0} 种`);
+  console.log(`  - 总热量: ${variables.calories} kcal`);
+  console.log(`  - 蛋白质: ${variables.protein} g`);
+  console.log(`  - 脂肪: ${variables.fat} g`);
+  console.log(`  - 碳水化合物: ${variables.carbs} g`);
+  console.log(`  - 膳食纤维: ${variables.fiber} g`);
+  console.log(`  - 钙: ${variables.calcium} mg`);
+  console.log(`  - 维生素C: ${variables.vitaminC} mg`);
+  console.log(`  - 铁: ${variables.iron} mg`);
+  console.log(`  - 每日目标: ${variables.dailyTarget} kcal`);
+  console.log(`  - 目标达成率: ${variables.achievement}%`);
+  console.log(`  - 尝试菜品数: ${variables.newDishes} 种`);
 
   console.log('\n提示词信息:');
-  console.log(`  - 系统提示词长度: ${systemPrompt.length} 字符`);
-  console.log(`  - 用户提示词长度: ${userPrompt.length} 字符`);
-  console.log(`  - 系统提示词: ${systemPrompt.substring(0, 100)}...`);
-  console.log(`  - 用户提示词: ${userPrompt.substring(0, 150)}...`);
+  console.log(`  - 系统提示词长度: ${finalSystemPrompt.length} 字符`);
+  console.log(`  - 用户提示词长度: ${finalUserPrompt.length} 字符`);
+  console.log(`  - 系统提示词: ${finalSystemPrompt.substring(0, 100)}...`);
+  console.log(`  - 用户提示词: ${finalUserPrompt.substring(0, 150)}...`);
   
   console.log('\n发送 API 请求...');
 
@@ -106,8 +114,8 @@ async function generateDietAnalysis(nutritionData, period = '本周', role = 'cl
       {
         model,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
+          { role: 'system', content: finalSystemPrompt },
+          { role: 'user', content: finalUserPrompt }
         ],
         temperature: 0.7,
         max_tokens: 800,

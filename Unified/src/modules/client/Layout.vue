@@ -11,6 +11,7 @@
       @location="openLocationPicker"
       @history="openHistoryDialog"
       @newChat="handleNewChat"
+      @skills="openSkillsManager"
     />
 
     <div v-if="showAvatarMenu" class="avatar-menu" @click.self="showAvatarMenu = false">
@@ -161,6 +162,11 @@ const openHistoryDialog = () => {
 const handleNewChat = () => {
   // 通过事件总线传递给AI助手页面
   window.dispatchEvent(new CustomEvent('ai-new-chat'))
+}
+
+const openSkillsManager = () => {
+  // 通过事件总线传递给AI助手页面
+  window.dispatchEvent(new CustomEvent('ai-open-skills'))
 }
 
 onMounted(() => {

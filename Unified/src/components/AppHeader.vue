@@ -16,6 +16,11 @@
         <slot />
         <!-- AI助手页面的按钮 -->
         <div v-if="showAIButtons" class="ai-header-buttons">
+          <button class="ai-header-btn" @click="$emit('skills')" title="技能管理">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z" fill="currentColor"/>
+            </svg>
+          </button>
           <button class="ai-header-btn" @click="$emit('history')" title="历史对话">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z" fill="currentColor"/>
@@ -71,7 +76,7 @@ defineProps({
   }
 })
 
-defineEmits(['back', 'avatar', 'location', 'history', 'newChat'])
+defineEmits(['back', 'avatar', 'location', 'history', 'newChat', 'skills'])
 </script>
 
 <style scoped>

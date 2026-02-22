@@ -207,6 +207,9 @@
       </div>
     </div>
   </Teleport>
+
+  <!-- Skill管理器 -->
+  <SkillManager v-model="showSkillManager" />
 </template>
 
 <script setup>
@@ -216,6 +219,7 @@ import { sendXiaozhiMessage, getChatMessages, getConversations, createNewConvers
 import { useUserStore } from '../../stores/user'
 import { showToast } from '../../utils/toast'
 import BottomSheet from '../../components/BottomSheet.vue'
+import SkillManager from '../../components/SkillManager.vue'
 import { getXiaozhiWebSocket, getDeviceConfig, getOtaUrl } from '../../utils/xiaozhi-websocket'
 
 const userStore = useUserStore()
@@ -227,6 +231,9 @@ const wsConnecting = ref(false)
 
 // 政府端专属的 OTA URL
 const GOV_OTA_URL = getOtaUrl('gov')
+
+// Skill管理器状态
+const showSkillManager = ref(false)
 
 const inputText = ref('')
 const messagesRef = ref(null)
@@ -1191,6 +1198,10 @@ const handleNewChatEvent = () => {
   handleNewConversation()
 }
 
+const handleSkillsEvent = () => {
+  showSkillManager.value = true
+}
+
 // 组件卸载时清理
 onUnmounted(() => {
   // 停止流式输出
@@ -1211,6 +1222,7 @@ onUnmounted(() => {
   // 移除事件监听器
   window.removeEventListener('ai-open-history', handleHistoryEvent)
   window.removeEventListener('ai-new-chat', handleNewChatEvent)
+  window.removeEventListener('ai-open-skills', handleSkillsEvent)
 })
 
 onMounted(async () => {
@@ -1234,6 +1246,7 @@ onMounted(async () => {
   // 监听来自Layout的事件
   window.addEventListener('ai-open-history', handleHistoryEvent)
   window.addEventListener('ai-new-chat', handleNewChatEvent)
+  window.addEventListener('ai-open-skills', handleSkillsEvent)
   
   scrollToBottom()
 })
