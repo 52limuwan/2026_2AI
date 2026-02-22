@@ -92,7 +92,8 @@ export const sendXiaozhiMessage = (payload) => {
     endpoint = '/ai/chat/gov'
   }
   
-  return http.post(endpoint, payload).then((res) => unwrap(res))
+  // 移除超时限制，让大模型有足够时间思考
+  return http.post(endpoint, payload, { timeout: 0 }).then((res) => unwrap(res))
 }
 
 // 获取聊天记录

@@ -37,53 +37,15 @@
             </div>
           </div>
 
-          <!-- 如果是最后一条用户消息，在它后面显示技能卡片 -->
+          <!-- 如果用户消息有技能卡片，在消息后显示 -->
           <div 
-            v-if="msg.role === 'user' && index === messages.length - 1 && skillCallSteps.length > 0" 
+            v-if="msg.role === 'user' && msg.skillSteps && msg.skillSteps.length > 0" 
             class="message-item message-ai"
           >
             <div class="skill-cards-wrapper">
               <div
-                v-for="(step, stepIndex) in skillCallSteps"
-                :key="`skill-${stepIndex}-${step.type}`"
-                class="skill-call-item"
-                :class="{ 'thinking-block': step.type === 'thinking' }"
-              >
-                <div class="skill-call-header">
-                  <span 
-                    class="skill-call-title" 
-                    :class="{ 
-                      'thinking-shimmer': step.type === 'thinking',
-                      'text-transition': step.isTransitioning
-                    }"
-                  >{{ step.title }}</span>
-                  <span 
-                    v-if="step.skillName" 
-                    class="skill-call-name"
-                    :class="{ 
-                      'text-transition': step.isTransitioning,
-                      'fade-in': step.isFadingIn
-                    }"
-                  >{{ step.skillName }}</span>
-                </div>
-                <transition name="skill-content-expand">
-                  <div v-if="step.expanded && step.content" class="skill-call-content">
-                    <div class="skill-content-text">{{ step.content }}</div>
-                  </div>
-                </transition>
-              </div>
-            </div>
-          </div>
-
-          <!-- 如果是倒数第二条用户消息，且最后一条是AI消息，在用户消息后显示技能卡片 -->
-          <div 
-            v-if="msg.role === 'user' && index === messages.length - 2 && messages[messages.length - 1]?.role === 'ai' && skillCallSteps.length > 0" 
-            class="message-item message-ai"
-          >
-            <div class="skill-cards-wrapper">
-              <div
-                v-for="(step, stepIndex) in skillCallSteps"
-                :key="`skill-${stepIndex}-${step.type}`"
+                v-for="(step, stepIndex) in msg.skillSteps"
+                :key="`skill-${index}-${stepIndex}-${step.type}`"
                 class="skill-call-item"
                 :class="{ 'thinking-block': step.type === 'thinking' }"
               >
@@ -562,6 +524,13 @@ const loadChatHistory = async () => {
   if (!userStore.profile?.id) return
 
   try {
+    // 尝试从 localStorage 恢复会话ID
+    const savedConversationId = localStorage.getItem('current_conversation_id')
+    if (savedConversationId && !conversationId.value) {
+      conversationId.value = savedConversationId
+      console.log('从 localStorage 恢复会话ID:', savedConversationId)
+    }
+    
     // 如果当前没有会话ID，不自动加载，保持欢迎消息状态
     // 用户可以选择从历史对话中选择，或者直接发送消息创建新对话
     if (conversationId.value) {
@@ -569,12 +538,13 @@ const loadChatHistory = async () => {
       const { messages: historyMessages } = await getChatMessages({ conversationId: conversationId.value })
       
       if (historyMessages && historyMessages.length > 0) {
-        // 加载历史消息
+        // 加载历史消息，包含技能卡片信息
         messages.value = historyMessages.map(msg => ({
           id: msg.id,
           role: msg.role,
           content: msg.content,
-          timestamp: msg.timestamp
+          timestamp: msg.timestamp,
+          skillSteps: msg.skillSteps || null // 加载技能卡片信息
         }))
         // 欢迎消息始终显示，不隐藏
         scrollToBottom()
@@ -767,14 +737,22 @@ const saveMessageToDatabase = async (message) => {
     // 如果没有会话ID，使用临时ID（等待 Dify 返回真实ID后会更新）
     const currentConvId = conversationId.value || 'temp_' + Date.now()
     
-    await saveWebSocketMessage({
+    // 准备保存的数据，包含技能卡片信息
+    const messageData = {
       conversationId: currentConvId,
       role: message.role,
       content: message.content,
       timestamp: message.timestamp
-    })
+    }
     
-    console.log('消息已保存到数据库')
+    // 如果有技能卡片信息，保存到 context 字段
+    if (message.skillSteps) {
+      messageData.context = JSON.stringify({ skillSteps: message.skillSteps })
+    }
+    
+    await saveWebSocketMessage(messageData)
+    
+    console.log('消息已保存到数据库', message.skillSteps ? '(包含技能卡片)' : '')
   } catch (error) {
     console.error('保存消息失败:', error)
     // 不影响用户体验，静默失败
@@ -947,20 +925,41 @@ const handleSend = async () => {
   const userMessage = {
     role: 'user',
     content: content,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    skillSteps: null // 用户消息没有技能卡片
   }
   messages.value.push(userMessage)
+  const userMessageIndex = messages.value.length - 1
   inputText.value = ''
   scrollToBottom()
 
   // 保存用户消息到数据库
   saveMessageToDatabase(userMessage)
 
-  // 识别技能
+  // 识别技能并为这条消息创建技能卡片
   const detectedSkill = detectSkill(content)
+  let messageSkillSteps = []
+  
   if (detectedSkill) {
+    // 检测到技能，先只显示"思考中"
     activeSkill.value = detectedSkill
-    startSkillAnimation()
+    messageSkillSteps = [
+      { type: 'thinking', title: '思考中', skillName: '' }
+    ]
+    
+    // 将初始技能卡片附加到用户消息
+    messages.value[userMessageIndex].skillSteps = messageSkillSteps
+    
+    // 启动动画效果，逐步添加卡片
+    startSkillAnimationForMessage(userMessageIndex, detectedSkill)
+  } else {
+    // 没有检测到技能，只显示"思考中"
+    messageSkillSteps = [
+      { type: 'thinking', title: '思考中', skillName: '' }
+    ]
+    
+    // 将简单的思考卡片附加到用户消息
+    messages.value[userMessageIndex].skillSteps = messageSkillSteps
   }
 
   // 显示"思考中"状态
@@ -980,30 +979,48 @@ const handleSend = async () => {
     
     console.log('收到响应:', response)
     
-    // 更新会话ID
+    // 更新会话ID - 确保保存到本地
     if (response.conversationId) {
       conversationId.value = response.conversationId
       console.log('更新会话ID:', response.conversationId)
+      
+      // 保存会话ID到 localStorage，确保刷新后仍然保持
+      localStorage.setItem('current_conversation_id', response.conversationId)
     }
     
     isThinking.value = false
     
-    // 停止技能动画
-    stopSkillAnimation()
+    // 更新技能卡片状态为完成
+    if (messages.value[userMessageIndex].skillSteps) {
+      const thinkingStep = messages.value[userMessageIndex].skillSteps.find(s => s.type === 'thinking')
+      if (thinkingStep) {
+        thinkingStep.title = '思考已完成'
+        thinkingStep.type = 'thinking-done'
+      }
+      
+      // 如果有技能，确保技能卡片显示完整
+      if (detectedSkill && messages.value[userMessageIndex].skillSteps.length === 3) {
+        // 技能卡片已完整，无需额外操作
+      }
+    }
     
     // 添加 AI 回复
     const aiMessage = {
       role: 'ai',
       content: response.reply || '抱歉，我现在无法回答。',
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      skillSteps: null // AI 消息没有技能卡片
     }
     console.log('添加 AI 消息，完整长度:', aiMessage.content.length)
-    console.log('AI 消息前100字:', aiMessage.content.substring(0, 100))
-    console.log('AI 消息后100字:', aiMessage.content.substring(aiMessage.content.length - 100))
     messages.value.push(aiMessage)
     
-    // 保存 AI 回复到数据库
+    // 保存 AI 回复到数据库（包含技能信息）
     saveMessageToDatabase(aiMessage)
+    
+    // 同时更新用户消息，保存技能卡片信息
+    if (messages.value[userMessageIndex].skillSteps) {
+      saveMessageToDatabase(messages.value[userMessageIndex])
+    }
     
     // 模拟流式输出效果
     const messageIndex = messages.value.length - 1
@@ -1015,9 +1032,93 @@ const handleSend = async () => {
     console.error('发送消息失败:', err)
     isThinking.value = false
     isLoading.value = false
-    stopSkillAnimation()
+    
+    // 更新技能卡片状态为失败
+    if (messages.value[userMessageIndex].skillSteps) {
+      const thinkingStep = messages.value[userMessageIndex].skillSteps.find(s => s.type === 'thinking')
+      if (thinkingStep) {
+        thinkingStep.title = '思考失败'
+        thinkingStep.type = 'thinking-failed'
+      }
+    }
+    
     showToast('发送失败，请稍后重试')
   }
+}
+
+// 为特定消息启动技能动画
+const startSkillAnimationForMessage = (messageIndex, detectedSkill) => {
+  const message = messages.value[messageIndex]
+  if (!message || !message.skillSteps) return
+  
+  // 步骤1: 立即显示"思考中"（已经在数组中）
+  
+  // 步骤2: 延迟1秒后添加"阅读 SKILL"卡片
+  setTimeout(() => {
+    if (!messages.value[messageIndex] || !messages.value[messageIndex].skillSteps) return
+    
+    // 添加第二个卡片
+    messages.value[messageIndex].skillSteps.push({
+      type: 'read',
+      title: '阅读 SKILL',
+      skillName: '',
+      isTransitioning: false,
+      isFadingIn: false
+    })
+    messages.value = [...messages.value]
+    
+    // 延迟0.5秒后显示右侧文字
+    setTimeout(() => {
+      const readStep = messages.value[messageIndex].skillSteps.find(s => s.type === 'read')
+      if (readStep) {
+        readStep.skillName = 'ls /app/.sshb/skills/'
+        readStep.isFadingIn = true
+        messages.value = [...messages.value]
+        
+        setTimeout(() => {
+          readStep.isFadingIn = false
+          messages.value = [...messages.value]
+        }, 500)
+      }
+    }, 500)
+  }, 1000)
+  
+  // 步骤3: 延迟2.5秒后开始过渡动画
+  setTimeout(() => {
+    const readStep = messages.value[messageIndex]?.skillSteps?.find(s => s.type === 'read')
+    if (readStep) {
+      readStep.isTransitioning = true
+      messages.value = [...messages.value]
+      
+      // 延迟0.25秒后更新文字
+      setTimeout(() => {
+        readStep.title = '读取技能'
+        const skillFileName = detectedSkill.split(' - ')[0] + '.md'
+        readStep.skillName = skillFileName
+        messages.value = [...messages.value]
+      }, 250)
+      
+      // 延迟0.5秒后停止过渡
+      setTimeout(() => {
+        readStep.isTransitioning = false
+        messages.value = [...messages.value]
+      }, 500)
+    }
+  }, 2500)
+  
+  // 步骤4: 延迟4秒后添加"使用技能"卡片
+  setTimeout(() => {
+    if (!messages.value[messageIndex] || !messages.value[messageIndex].skillSteps) return
+    
+    // 添加第三个卡片
+    messages.value[messageIndex].skillSteps.push({
+      type: 'use',
+      title: '使用技能',
+      skillName: detectedSkill
+    })
+    messages.value = [...messages.value]
+    scrollToBottom()
+  }, 4000)
 }
 
 // 处理快捷提问
@@ -1222,8 +1323,14 @@ const handleNewConversation = async () => {
     // 当用户发送第一条消息时，后端会自动创建新的对话ID
     conversationId.value = ''
     
+    // 清除 localStorage 中的会话ID
+    localStorage.removeItem('current_conversation_id')
+    
     // 清空当前消息（保留欢迎消息显示）
     messages.value = []
+    
+    // 清空技能卡片
+    skillCallSteps.value = []
     
     // 欢迎消息始终显示
     

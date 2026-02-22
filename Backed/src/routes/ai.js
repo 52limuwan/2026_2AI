@@ -161,7 +161,10 @@ const detectSkill = (message) => {
 const readSkillFile = async (filename) => {
   try {
     const skillPath = path.join(__dirname, '../../Skills', filename);
+    console.log(`  读取技能文件路径: ${skillPath}`);
     const content = await fs.readFile(skillPath, 'utf-8');
+    console.log(`  文件实际字符数: ${content.length}`);
+    console.log(`  文件内容预览: ${content.substring(0, 150)}...`);
     return content;
   } catch (error) {
     console.error(`读取技能文件失败: ${filename}`, error);
@@ -841,7 +844,7 @@ router.get('/guardian/diet-reports/:clientId/:reportId', authRequired, requireRo
 router.post('/messages/save', authRequired, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { conversationId, role, content, timestamp, targetClientId } = req.body;
+    const { conversationId, role, content, timestamp, targetClientId, context } = req.body;
 
     if (!conversationId || !role || !content || !timestamp) {
       return failure(res, '缺少必要参数', 400);
@@ -856,17 +859,21 @@ router.post('/messages/save', authRequired, async (req, res) => {
     console.log(`  会话 ID: ${conversationId}`);
     console.log(`  角色: ${role}`);
     console.log(`  内容长度: ${content.length}`);
+    if (context) {
+      console.log(`  包含上下文信息: ${context.substring(0, 100)}...`);
+    }
 
     const result = await db.run(
       `INSERT INTO ai_chat_messages 
-       (user_id, target_client_id, conversation_id, role, content, timestamp)
-       VALUES (:user_id, :target_client_id, :conversation_id, :role, :content, :timestamp)`,
+       (user_id, target_client_id, conversation_id, role, content, context, timestamp)
+       VALUES (:user_id, :target_client_id, :conversation_id, :role, :content, :context, :timestamp)`,
       {
         user_id: userId,
         target_client_id: targetClientId || null,
         conversation_id: conversationId,
         role,
         content,
+        context: context || null,
         timestamp
       }
     );
@@ -947,7 +954,7 @@ router.get('/messages', authRequired, async (req, res) => {
     console.log(`  会话 ID: ${conversationId}`);
 
     const messages = await db.all(
-      `SELECT id, role, content, timestamp
+      `SELECT id, role, content, context, timestamp
        FROM ai_chat_messages
        WHERE user_id = :user_id AND conversation_id = :conversation_id
        ORDER BY timestamp ASC
@@ -955,7 +962,25 @@ router.get('/messages', authRequired, async (req, res) => {
       { user_id: userId, conversation_id: conversationId, limit: parseInt(limit) }
     );
 
-    return success(res, { messages });
+    // 解析 context 字段中的技能卡片信息
+    const parsedMessages = messages.map(msg => {
+      const message = { ...msg };
+      if (msg.context) {
+        try {
+          const contextData = JSON.parse(msg.context);
+          message.skillSteps = contextData.skillSteps || null;
+        } catch (e) {
+          console.error('解析 context 失败:', e);
+          message.skillSteps = null;
+        }
+      } else {
+        message.skillSteps = null;
+      }
+      delete message.context; // 不返回原始 context 字段
+      return message;
+    });
+
+    return success(res, { messages: parsedMessages });
   } catch (error) {
     console.error('获取聊天记录失败:', error);
     return failure(res, error.message || '获取聊天记录失败', 500);
@@ -1099,6 +1124,21 @@ router.post('/smart-recommend', authRequired, requireRole('client'), async (req,
 
 // ==================== AI顾问 AI 聊天接口（使用 dify API） ====================
 
+// 会话技能缓存 - 用于上下文共享优化
+const conversationSkillCache = new Map();
+
+// 定期清理过期缓存（30分钟未使用）
+setInterval(() => {
+  const now = Date.now();
+  const expireTime = 30 * 60 * 1000; // 30分钟
+  for (const [key, value] of conversationSkillCache.entries()) {
+    if (now - value.timestamp > expireTime) {
+      conversationSkillCache.delete(key);
+      console.log(`[缓存清理] 删除过期会话技能: ${key}`);
+    }
+  }
+}, 10 * 60 * 1000); // 每10分钟检查一次
+
 // AI顾问聊天 - 客户端（使用 dify API）
 router.post('/chat/client', authRequired, requireRole('client'), async (req, res) => {
   try {
@@ -1116,19 +1156,62 @@ router.post('/chat/client', authRequired, requireRole('client'), async (req, res
     // 识别技能
     const detectedSkill = detectSkill(message);
     let skillContent = '';
+    let shouldUpdateSkill = false;
+    let cachedSkill = null;
     
-    if (detectedSkill) {
-      console.log(`  检测到技能: ${detectedSkill.name}`);
-      console.log(`  技能文件: ${detectedSkill.file}`);
-      
-      // 读取技能文件内容
-      skillContent = await readSkillFile(detectedSkill.file);
-      
-      if (skillContent) {
-        console.log(`  技能内容长度: ${skillContent.length} 字符`);
-      } else {
-        console.log(`  技能文件读取失败`);
+    // 如果有会话ID，检查缓存的技能
+    if (conversationId && conversationId.trim()) {
+      cachedSkill = conversationSkillCache.get(conversationId);
+      if (cachedSkill) {
+        console.log(`  缓存的技能: ${cachedSkill.name}`);
       }
+    }
+    
+    // 决定是否需要更新技能
+    if (detectedSkill) {
+      // 检测到新技能
+      if (!cachedSkill || cachedSkill.name !== detectedSkill.name) {
+        // 新对话或技能切换
+        shouldUpdateSkill = true;
+        console.log(`  检测到技能: ${detectedSkill.name} (${shouldUpdateSkill ? '新技能/切换' : '已缓存'})`);
+        console.log(`  技能文件: ${detectedSkill.file}`);
+        
+        // 读取技能文件内容
+        skillContent = await readSkillFile(detectedSkill.file);
+        
+        if (skillContent) {
+          console.log(`  ✓ 技能内容读取成功`);
+          console.log(`  技能内容长度: ${skillContent.length} 字符`);
+          console.log(`  技能内容前200字: ${skillContent.substring(0, 200)}`);
+          // 更新缓存
+          if (conversationId && conversationId.trim()) {
+            conversationSkillCache.set(conversationId, {
+              name: detectedSkill.name,
+              file: detectedSkill.file,
+              content: skillContent,
+              timestamp: Date.now()
+            });
+          }
+        } else {
+          console.log(`  ✗ 技能文件读取失败`);
+        }
+      } else {
+        // 使用缓存的技能
+        console.log(`  使用缓存的技能: ${cachedSkill.name}`);
+        console.log(`  缓存内容长度: ${cachedSkill.content.length} 字符`);
+        skillContent = cachedSkill.content;
+        // 更新时间戳
+        cachedSkill.timestamp = Date.now();
+      }
+    } else if (cachedSkill) {
+      // 没有检测到新技能，但有缓存的技能，继续使用
+      console.log(`  继续使用缓存的技能: ${cachedSkill.name}`);
+      console.log(`  缓存内容长度: ${cachedSkill.content.length} 字符`);
+      skillContent = cachedSkill.content;
+      // 更新时间戳
+      cachedSkill.timestamp = Date.now();
+    } else {
+      console.log(`  未检测到技能，使用通用对话模式`);
     }
 
     // 调用 dify API
@@ -1143,18 +1226,13 @@ router.post('/chat/client', authRequired, requireRole('client'), async (req, res
       return failure(res, 'AI 服务配置错误', 500);
     }
     
-    // 构建发送给Dify的消息
-    let finalMessage = message;
-    if (skillContent) {
-      // 将技能内容作为系统提示词添加到消息前面
-      finalMessage = `${skillContent}\n\n---\n\n用户问题：${message}`;
-      console.log(`  最终消息长度: ${finalMessage.length} 字符`);
-    }
-    
-    // 构建 dify API 请求体
+    // 构建 dify API 请求体 - 使用新的方式通过 inputs.systemprompt 传递技能提示词
     const requestBody = {
-      inputs: {},
-      query: finalMessage,
+      files: [],
+      inputs: {
+        systemprompt: skillContent || '' // 将技能内容放入 inputs.systemprompt
+      },
+      query: message, // 用户问题保持原样，不拼接技能内容
       response_mode: 'blocking',
       user: `user_${userId}`
     };
@@ -1164,11 +1242,20 @@ router.post('/chat/client', authRequired, requireRole('client'), async (req, res
       requestBody.conversation_id = conversationId;
     }
     
+    console.log(`  请求体结构:`);
+    console.log(`    - query: ${message}`);
+    console.log(`    - systemprompt 长度: ${skillContent.length} 字符`);
+    if (skillContent) {
+      console.log(`    - systemprompt 预览: ${skillContent.substring(0, 200)}...`);
+    }
+    console.log(`    - conversation_id: ${conversationId || '(新对话)'}`);
+    console.log(`    - 技能状态: ${shouldUpdateSkill ? '新技能/切换' : cachedSkill ? '使用缓存' : '无技能'}`);
+    
     console.log(`  请求 URL: ${difyApiUrl}/chat-messages`);
     
     const startTime = Date.now();
     
-    // 使用阻塞模式
+    // 使用阻塞模式 - 移除超时限制，让大模型有足够时间思考
     const difyResponse = await axios.post(
       `${difyApiUrl}/chat-messages`,
       requestBody,
@@ -1177,7 +1264,7 @@ router.post('/chat/client', authRequired, requireRole('client'), async (req, res
           'Authorization': `Bearer ${difyApiKey}`,
           'Content-Type': 'application/json'
         },
-        timeout: 60000
+        timeout: 0 // 移除超时限制
       }
     );
     
@@ -1190,12 +1277,26 @@ router.post('/chat/client', authRequired, requireRole('client'), async (req, res
 
     console.log(`  回复长度: ${reply.length}`);
     console.log(`  新对话ID: ${newConversationId}`);
+    
+    // 如果是新对话，更新缓存的会话ID
+    if (newConversationId && (!conversationId || conversationId !== newConversationId)) {
+      if (skillContent && detectedSkill) {
+        conversationSkillCache.set(newConversationId, {
+          name: detectedSkill.name,
+          file: detectedSkill.file,
+          content: skillContent,
+          timestamp: Date.now()
+        });
+        console.log(`  已缓存技能到新会话: ${newConversationId}`);
+      }
+    }
 
     return success(res, {
       reply,
       conversationId: newConversationId,
       timestamp: Date.now(),
-      skillUsed: detectedSkill ? detectedSkill.name : null
+      skillUsed: detectedSkill ? detectedSkill.name : (cachedSkill ? cachedSkill.name : null),
+      skillStatus: shouldUpdateSkill ? 'new' : (cachedSkill ? 'cached' : 'none')
     }, '消息发送成功');
   } catch (error) {
     console.error('AI顾问聊天失败:', error);
