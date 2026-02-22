@@ -1,6 +1,8 @@
 const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
+const fs = require('fs').promises;
+const path = require('path');
 const db = require('../db');
 const { authRequired, requireRole } = require('../middleware/auth');
 const { success, failure } = require('../utils/respond');
@@ -8,6 +10,164 @@ const { generateDietAnalysis, generateSmartRecommendation } = require('../servic
 const { getPastDays } = require('../utils/dateHelper');
 
 const router = express.Router();
+
+// 技能关键词映射 - 与前端完全一致
+const skillKeywords = {
+  '营养师 - 基础营养咨询': {
+    file: 'client-nutritionist.md',
+    keywords: ['营养', '健康', '饮食', '菜品', '搭配', '均衡', '食物', '吃什么', '适合', '补充', '缺乏',
+      '维生素', '蛋白质', '钙', '铁', '锌', '硒', '叶酸', '膳食纤维', '碳水', '脂肪', '热量', '卡路里',
+      '营养不良', '怎么吃', '吃点啥', '补什么', '营养价值', '有营养', '没营养', '吃了好', '对身体好',
+      '蔬菜', '水果', '肉类', '鱼', '蛋', '奶', '豆制品', '粗粮', '细粮', '主食', '零食',
+      '消化', '吸收', '胃口', '食欲', '不想吃', '吃不下', '吃太多', '吃太少', '挑食', '偏食',
+      '增重', '减重', '长胖', '瘦了', '体重', '贫血', '骨质疏松', '便秘', '腹泻', '胀气']
+  },
+  '中医养生师 - 传统养生调理': {
+    file: 'client-tcm-health.md',
+    keywords: ['中医', '养生', '调理', '体质', '气血', '经络', '穴位', '食疗', '中药', '汤药',
+      '阴虚', '阳虚', '气虚', '血虚', '痰湿', '湿热', '气郁', '血瘀', '特禀',
+      '湿气', '上火', '寒凉', '温补', '滋补', '补气', '补血', '脾胃', '肝肾', '肺',
+      '阴阳', '五行', '寒热', '虚实', '表里', '气机', '津液', '精气神',
+      '艾灸', '拔罐', '刮痧', '推拿', '按摩', '泡脚', '药浴', '食补', '药膳',
+      '体寒', '怕冷', '怕热', '出汗', '盗汗', '手脚冰凉', '口干', '口苦', '舌苔', '脉象']
+  },
+  '慢病管理师 - 慢性病管理': {
+    file: 'client-chronic-disease.md',
+    keywords: ['高血压', '糖尿病', '高血脂', '三高', '血糖', '血压', '血脂', '胆固醇', '甘油三酯',
+      '心脏病', '冠心病', '心绞痛', '心梗', '脑梗', '中风', '动脉硬化', '心律不齐', '房颤',
+      '慢性病', '痛风', '尿酸', '肾病', '肝病', '脂肪肝', '胆结石', '肾结石', '前列腺',
+      '用药', '控制', '稳定', '降压', '降糖', '降脂', '并发症', '复查', '监测',
+      '头晕', '头痛', '胸闷', '气短', '心慌', '乏力', '水肿', '尿频', '尿急',
+      '血压高', '血糖高', '血脂高', '指标高', '超标', '不正常', '控制不住', '反复']
+  },
+  '运动康复师 - 适老运动指导': {
+    file: 'client-exercise-rehab.md',
+    keywords: ['运动', '锻炼', '康复', '健身', '太极', '散步', '活动', '走路', '慢跑', '游泳', '广场舞',
+      '关节', '腿脚', '膝盖', '腰', '背', '颈椎', '肩膀', '手臂', '脚踝', '髋关节',
+      '疼痛', '僵硬', '无力', '酸痛', '麻木', '肿胀', '抽筋', '扭伤', '拉伤',
+      '跌倒', '摔倒', '平衡', '站不稳', '走不动', '爬楼', '上楼', '下楼', '蹲不下', '起不来',
+      '骨质疏松', '关节炎', '风湿', '肌肉萎缩', '骨折', '骨裂', '腰椎间盘', '颈椎病',
+      '康复训练', '理疗', '拉伸', '热敷', '冷敷', '按摩', '力量训练', '柔韧性',
+      '怎么动', '能不能动', '动不了', '不敢动', '动了疼', '僵硬', '不灵活', '没劲']
+  },
+  '心理咨询师 - 心理健康关怀': {
+    file: 'client-psychology.md',
+    keywords: ['心理', '情绪', '焦虑', '抑郁', '孤独', '烦躁', '不开心', '想不开', '心情', '心烦', '郁闷', '寂寞',
+      '睡眠', '失眠', '睡不着', '做梦', '噩梦', '早醒', '睡不好', '多梦', '浅睡', '打鼾',
+      '压力', '担心', '害怕', '恐惧', '紧张', '不安', '烦恼', '委屈', '生气', '愤怒',
+      '记忆力', '健忘', '记不住', '想不起来', '糊涂', '迷糊', '反应慢', '注意力',
+      '孤单', '没人说话', '没朋友', '不想见人', '不想出门', '宅', '社交', '人际关系',
+      '没意思', '没劲', '活着没意思', '没盼头', '没希望', '没用', '拖累', '负担',
+      '子女', '儿女', '孙子', '老伴', '配偶', '家庭矛盾', '代沟', '不理解', '冷落',
+      '心里难受', '想哭', '委屈', '憋屈', '想不通', '放不下', '看不开', '钻牛角尖']
+  },
+  '膳食搭配师 - 食谱与烹饪': {
+    file: 'client-meal-planning.md',
+    keywords: ['食谱', '菜谱', '一日三餐', '早餐', '午餐', '晚餐', '加餐', '夜宵', '点心', '零食',
+      '做法', '烹饪', '怎么做', '做菜', '煮', '炒', '蒸', '炖', '煲', '烤', '煎', '炸', '凉拌',
+      '搭配', '配菜', '主食', '副食', '荤素', '粗细', '干稀', '冷热',
+      '怎么煮', '怎么炒', '怎么蒸', '煮多久', '火候', '调味', '放什么', '加什么',
+      '咸淡', '甜', '酸', '辣', '苦', '鲜', '香', '清淡', '重口味', '口味',
+      '汤', '粥', '面', '饭', '菜', '肉', '素菜', '荤菜', '凉菜', '热菜',
+      '软烂', '好嚼', '好消化', '清淡', '少油', '少盐', '少糖', '无糖', '低脂',
+      '吃什么好', '做什么菜', '今天吃啥', '换换口味', '吃腻了', '想吃', '不想吃']
+  },
+  '用药指导师 - 安全用药指导': {
+    file: 'client-medication.md',
+    keywords: ['药物', '吃药', '服药', '用药', '药品', '药', '西药', '中成药', '保健品',
+      '什么时候吃', '饭前', '饭后', '空腹', '睡前', '早上', '晚上', '一天几次',
+      '忘记吃药', '漏吃', '多吃', '少吃', '吃错', '吃重复', '停药', '换药', '减药', '加药',
+      '药效', '有效', '没效', '不管用', '见效', '起效', '药量', '剂量', '疗程',
+      '副作用', '不良反应', '过敏', '不舒服', '恶心', '呕吐', '头晕', '皮疹', '瘙痒',
+      '能一起吃吗', '冲突', '相克', '禁忌', '不能吃', '能不能', '可以吗',
+      '忌口', '不能吃什么', '能吃什么', '饮食禁忌', '喝酒', '喝茶', '喝咖啡',
+      '药物反应', '吃了不舒服', '管用吗', '要吃多久', '能停吗', '必须吃吗', '依赖']
+  },
+  '季节养护师 - 四季养生': {
+    file: 'client-seasonal-care.md',
+    keywords: ['春季', '夏季', '秋季', '冬季', '春天', '夏天', '秋天', '冬天', '季节', '换季',
+      '节气', '立春', '雨水', '惊蛰', '春分', '清明', '谷雨',
+      '立夏', '小满', '芒种', '夏至', '小暑', '大暑',
+      '立秋', '处暑', '白露', '秋分', '寒露', '霜降',
+      '立冬', '小雪', '大雪', '冬至', '小寒', '大寒',
+      '时令', '当季', '应季', '时令菜', '时令水果', '节令',
+      '天气', '气候', '温度', '气温', '冷', '热', '温差', '干燥', '潮湿', '闷热',
+      '温度变化', '气候变化', '倒春寒', '秋燥', '冬藏', '春生', '夏长', '秋收',
+      '感冒', '咳嗽', '过敏', '花粉', '皮肤干', '上火', '中暑', '着凉', '受寒',
+      '穿什么', '怎么穿', '加衣服', '减衣服', '注意什么', '小心什么']
+  },
+  '居家护理师 - 日常护理指导': {
+    file: 'client-home-care.md',
+    keywords: ['护理', '照顾', '照料', '料理', '日常护理', '生活护理', '个人卫生',
+      '洗澡', '擦身', '洗脸', '刷牙', '洗头', '剪指甲', '理发', '换衣', '穿衣',
+      '卧床', '翻身', '拍背', '按摩', '活动', '褥疮', '压疮', '皮肤护理',
+      '如厕', '上厕所', '大便', '小便', '大小便', '尿失禁', '便秘', '尿不出', '尿频',
+      '伤口', '换药', '消毒', '清洁', '包扎', '结痂', '化脓', '感染', '愈合',
+      '康复', '康复训练', '辅助', '搀扶', '轮椅', '拐杖', '助行器', '护理床',
+      '跌倒', '摔倒', '防滑', '扶手', '夜灯', '安全', '意外', '急救',
+      '鼻饲', '导尿', '吸痰', '吸氧', '雾化', '输液', '打针', '测血压', '测血糖',
+      '怎么照顾', '怎么护理', '注意什么', '怎么办', '正常吗', '要紧吗', '严重吗']
+  },
+  '健康档案师 - 健康数据管理': {
+    file: 'client-health-record.md',
+    keywords: ['体检', '检查', '化验', '报告', '体检报告', '检查报告', '化验单', '结果',
+      '指标', '数据', '正常吗', '偏高', '偏低', '超标', '异常', '不正常', '标准',
+      '血常规', '尿常规', '便常规', '肝功能', '肾功能', '血脂', '血糖', '心电图',
+      'B超', 'CT', '核磁', 'X光', '胃镜', '肠镜', '骨密度', '肺功能',
+      '记录', '健康档案', '病历', '就诊记录', '用药记录', '过敏史', '既往史',
+      '监测', '测量', '自测', '血压计', '血糖仪', '体温计', '体重秤',
+      '趋势', '变化', '对比', '上升', '下降', '波动', '稳定', '控制',
+      '风险', '危险', '预警', '注意', '警惕', '预防', '筛查', '早期',
+      '看不懂', '什么意思', '严重吗', '要紧吗', '有问题吗', '需要治疗吗', '怎么办']
+  },
+  '数据分析师 - 用户月报分析': {
+    file: 'client-monthly.md',
+    keywords: ['月报', '月度', '本月', '上月', '这个月', '月度报告', '月度分析', '月度数据',
+      '分析', '统计', '汇总', '总结', '报表', '数据', '趋势',
+      '这个月怎么样', '月度情况', '月度总结', '月度健康']
+  },
+  '数据分析师 - 用户周报分析': {
+    file: 'client-weekly.md',
+    keywords: ['周报', '本周', '上周', '这周', '这一周', '周度报告', '周度分析', '周度数据',
+      '分析', '统计', '汇总', '总结', '报表', '数据', '趋势',
+      '这周怎么样', '周度情况', '周度总结', '周度健康']
+  }
+};
+
+// 识别用户消息中的技能
+const detectSkill = (message) => {
+  let bestSkill = null;
+  let maxScore = 0;
+  
+  for (const [skillName, skillData] of Object.entries(skillKeywords)) {
+    let score = 0;
+    
+    for (const keyword of skillData.keywords) {
+      if (message.includes(keyword)) {
+        score++;
+      }
+    }
+    
+    if (score > maxScore) {
+      maxScore = score;
+      bestSkill = { name: skillName, file: skillData.file };
+    }
+  }
+  
+  return maxScore > 0 ? bestSkill : null;
+};
+
+// 读取技能文件内容
+const readSkillFile = async (filename) => {
+  try {
+    const skillPath = path.join(__dirname, '../../Skills', filename);
+    const content = await fs.readFile(skillPath, 'utf-8');
+    return content;
+  } catch (error) {
+    console.error(`读取技能文件失败: ${filename}`, error);
+    return null;
+  }
+};
 
 // 生成周报 AI 分析
 router.post('/diet-analysis/weekly', authRequired, requireRole('client'), async (req, res) => {
@@ -953,6 +1113,24 @@ router.post('/chat/client', authRequired, requireRole('client'), async (req, res
     console.log(`  对话ID: ${conversationId || '新对话'}`);
     console.log(`  消息: ${message}`);
 
+    // 识别技能
+    const detectedSkill = detectSkill(message);
+    let skillContent = '';
+    
+    if (detectedSkill) {
+      console.log(`  检测到技能: ${detectedSkill.name}`);
+      console.log(`  技能文件: ${detectedSkill.file}`);
+      
+      // 读取技能文件内容
+      skillContent = await readSkillFile(detectedSkill.file);
+      
+      if (skillContent) {
+        console.log(`  技能内容长度: ${skillContent.length} 字符`);
+      } else {
+        console.log(`  技能文件读取失败`);
+      }
+    }
+
     // 调用 dify API
     const difyApiKey = process.env.DIFY_API_KEY;
     const difyApiUrl = process.env.DIFY_API_URL || 'https://api.dify.ai/v1';
@@ -965,10 +1143,18 @@ router.post('/chat/client', authRequired, requireRole('client'), async (req, res
       return failure(res, 'AI 服务配置错误', 500);
     }
     
+    // 构建发送给Dify的消息
+    let finalMessage = message;
+    if (skillContent) {
+      // 将技能内容作为系统提示词添加到消息前面
+      finalMessage = `${skillContent}\n\n---\n\n用户问题：${message}`;
+      console.log(`  最终消息长度: ${finalMessage.length} 字符`);
+    }
+    
     // 构建 dify API 请求体
     const requestBody = {
       inputs: {},
-      query: message,
+      query: finalMessage,
       response_mode: 'blocking',
       user: `user_${userId}`
     };
@@ -979,11 +1165,10 @@ router.post('/chat/client', authRequired, requireRole('client'), async (req, res
     }
     
     console.log(`  请求 URL: ${difyApiUrl}/chat-messages`);
-    console.log(`  请求体:`, JSON.stringify(requestBody, null, 2));
     
     const startTime = Date.now();
     
-    // 使用阻塞模式（先让功能正常工作）
+    // 使用阻塞模式
     const difyResponse = await axios.post(
       `${difyApiUrl}/chat-messages`,
       requestBody,
@@ -1009,7 +1194,8 @@ router.post('/chat/client', authRequired, requireRole('client'), async (req, res
     return success(res, {
       reply,
       conversationId: newConversationId,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      skillUsed: detectedSkill ? detectedSkill.name : null
     }, '消息发送成功');
   } catch (error) {
     console.error('AI顾问聊天失败:', error);

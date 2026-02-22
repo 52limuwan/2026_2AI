@@ -24,50 +24,95 @@
         </div>
 
         <!-- 普通聊天消息（从数据库加载或新发送的） -->
-        <div
-          v-for="(msg, index) in messages"
-          :key="msg.id || index"
-          class="message-item"
-          :class="{ 'message-user': msg.role === 'user', 'message-ai': msg.role === 'ai' }"
-        >
-          <div class="message-bubble">
-            <div class="message-content markdown-content" v-html="renderMarkdown(msg.content)"></div>
-            <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
-          </div>
-        </div>
-
-        <!-- Agent Skill 技能调用展示 -->
-        <div v-if="skillCallSteps.length > 0" class="skill-call-container">
+        <template v-for="(msg, index) in messages" :key="msg.id || index">
+          <!-- 如果是最后一条用户消息且有技能卡片，在用户消息后显示技能卡片 -->
           <div
-            v-for="(step, index) in skillCallSteps"
-            :key="`skill-${index}-${step.type}`"
-            class="skill-call-item"
-            :class="{ 'thinking-block': step.type === 'thinking' }"
+            class="message-item"
+            :class="{ 'message-user': msg.role === 'user', 'message-ai': msg.role === 'ai' }"
           >
-            <div class="skill-call-header">
-              <span 
-                class="skill-call-title" 
-                :class="{ 
-                  'thinking-shimmer': step.type === 'thinking',
-                  'text-transition': step.isTransitioning
-                }"
-              >{{ step.title }}</span>
-              <span 
-                v-if="step.skillName" 
-                class="skill-call-name"
-                :class="{ 
-                  'text-transition': step.isTransitioning,
-                  'fade-in': step.isFadingIn
-                }"
-              >{{ step.skillName }}</span>
+            <!-- 消息内容气泡 -->
+            <div v-if="msg.content && msg.content.trim()" class="message-bubble">
+              <div class="message-content markdown-content" v-html="renderMarkdown(msg.content)"></div>
+              <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
             </div>
-            <transition name="skill-content-expand">
-              <div v-if="step.expanded && step.content" class="skill-call-content">
-                <div class="skill-content-text">{{ step.content }}</div>
-              </div>
-            </transition>
           </div>
-        </div>
+
+          <!-- 如果是最后一条用户消息，在它后面显示技能卡片 -->
+          <div 
+            v-if="msg.role === 'user' && index === messages.length - 1 && skillCallSteps.length > 0" 
+            class="message-item message-ai"
+          >
+            <div class="skill-cards-wrapper">
+              <div
+                v-for="(step, stepIndex) in skillCallSteps"
+                :key="`skill-${stepIndex}-${step.type}`"
+                class="skill-call-item"
+                :class="{ 'thinking-block': step.type === 'thinking' }"
+              >
+                <div class="skill-call-header">
+                  <span 
+                    class="skill-call-title" 
+                    :class="{ 
+                      'thinking-shimmer': step.type === 'thinking',
+                      'text-transition': step.isTransitioning
+                    }"
+                  >{{ step.title }}</span>
+                  <span 
+                    v-if="step.skillName" 
+                    class="skill-call-name"
+                    :class="{ 
+                      'text-transition': step.isTransitioning,
+                      'fade-in': step.isFadingIn
+                    }"
+                  >{{ step.skillName }}</span>
+                </div>
+                <transition name="skill-content-expand">
+                  <div v-if="step.expanded && step.content" class="skill-call-content">
+                    <div class="skill-content-text">{{ step.content }}</div>
+                  </div>
+                </transition>
+              </div>
+            </div>
+          </div>
+
+          <!-- 如果是倒数第二条用户消息，且最后一条是AI消息，在用户消息后显示技能卡片 -->
+          <div 
+            v-if="msg.role === 'user' && index === messages.length - 2 && messages[messages.length - 1]?.role === 'ai' && skillCallSteps.length > 0" 
+            class="message-item message-ai"
+          >
+            <div class="skill-cards-wrapper">
+              <div
+                v-for="(step, stepIndex) in skillCallSteps"
+                :key="`skill-${stepIndex}-${step.type}`"
+                class="skill-call-item"
+                :class="{ 'thinking-block': step.type === 'thinking' }"
+              >
+                <div class="skill-call-header">
+                  <span 
+                    class="skill-call-title" 
+                    :class="{ 
+                      'thinking-shimmer': step.type === 'thinking',
+                      'text-transition': step.isTransitioning
+                    }"
+                  >{{ step.title }}</span>
+                  <span 
+                    v-if="step.skillName" 
+                    class="skill-call-name"
+                    :class="{ 
+                      'text-transition': step.isTransitioning,
+                      'fade-in': step.isFadingIn
+                    }"
+                  >{{ step.skillName }}</span>
+                </div>
+                <transition name="skill-content-expand">
+                  <div v-if="step.expanded && step.content" class="skill-call-content">
+                    <div class="skill-content-text">{{ step.content }}</div>
+                  </div>
+                </transition>
+              </div>
+            </div>
+          </div>
+        </template>
 
         <!-- AI 正在输入中（备用，流式输出时不显示） -->
         <div v-if="isLoading && !isStreaming && !isThinking" class="message-item message-ai">
@@ -924,6 +969,8 @@ const handleSend = async () => {
   try {
     // 文字聊天使用 dify API（阻塞模式）
     console.log('使用 dify API 发送文字消息')
+    console.log('会话ID:', conversationId.value || '(空)')
+    console.log('消息内容:', content)
     
     // 通过 dify API 发送消息
     const response = await sendXiaozhiMessage({
@@ -931,9 +978,12 @@ const handleSend = async () => {
       message: content
     })
     
+    console.log('收到响应:', response)
+    
     // 更新会话ID
     if (response.conversationId) {
       conversationId.value = response.conversationId
+      console.log('更新会话ID:', response.conversationId)
     }
     
     isThinking.value = false
@@ -947,6 +997,9 @@ const handleSend = async () => {
       content: response.reply || '抱歉，我现在无法回答。',
       timestamp: Date.now()
     }
+    console.log('添加 AI 消息，完整长度:', aiMessage.content.length)
+    console.log('AI 消息前100字:', aiMessage.content.substring(0, 100))
+    console.log('AI 消息后100字:', aiMessage.content.substring(aiMessage.content.length - 100))
     messages.value.push(aiMessage)
     
     // 保存 AI 回复到数据库
@@ -1438,6 +1491,8 @@ onMounted(async () => {
   line-height: 1.6;
 }
 
+
+
 /* 欢迎消息特殊样式 */
 .welcome-message {
   margin-top: 4px;
@@ -1693,11 +1748,11 @@ onMounted(async () => {
 }
 
 /* Agent Skill 技能调用展示 */
-.skill-call-container {
+.skill-cards-wrapper {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin: 12px 0;
+  width: 100%;
 }
 
 .skill-call-item {
@@ -1708,6 +1763,7 @@ onMounted(async () => {
   transition: all 0.2s ease;
   animation: skillItemFadeIn 0.4s ease;
   min-height: 44px;
+  max-width: 75%;
 }
 
 @keyframes skillItemFadeIn {
