@@ -935,9 +935,9 @@ router.post('/smart-recommend', authRequired, requireRole('client'), async (req,
   }
 });
 
-// ==================== AI顾问 AI 聊天接口（HTTP 回退） ====================
+// ==================== AI顾问 AI 聊天接口（使用 dify API） ====================
 
-// AI顾问聊天 - 客户端（HTTP API，当 WebSocket 不可用时使用）
+// AI顾问聊天 - 客户端（使用 dify API）
 router.post('/chat/client', authRequired, requireRole('client'), async (req, res) => {
   try {
     const userId = req.user.id;
@@ -947,26 +947,59 @@ router.post('/chat/client', authRequired, requireRole('client'), async (req, res
       return failure(res, '消息内容不能为空', 400);
     }
 
-    console.log(`\n[AI顾问聊天-客户端] 用户 ${userId} 发送消息`);
+    console.log(`\n[AI顾问聊天-客户端-dify] 用户 ${userId} 发送消息`);
     console.log(`  对话ID: ${conversationId || '新对话'}`);
     console.log(`  消息: ${message}`);
 
-    // 这里可以调用 AI 服务生成回复
-    // 暂时返回一个简单的回复
-    const reply = '您好！我是AI顾问 AI 助手。WebSocket 连接暂时不可用，我正在通过 HTTP 方式为您服务。您的消息已收到，但完整的对话功能需要 WebSocket 连接。请稍后再试或联系管理员。';
+    // 调用 dify API
+    const difyApiKey = process.env.DIFY_API_KEY;
+    const difyApiUrl = process.env.DIFY_API_URL || 'https://api.dify.ai/v1';
+    
+    if (!difyApiKey || difyApiKey.includes('your_')) {
+      console.error('dify API Key 未配置');
+      return failure(res, 'AI 服务配置错误', 500);
+    }
+
+    const axios = require('axios');
+    
+    // 构建 dify API 请求
+    const difyResponse = await axios.post(
+      `${difyApiUrl}/chat-messages`,
+      {
+        inputs: {},
+        query: message,
+        response_mode: 'blocking',
+        conversation_id: conversationId || '',
+        user: `user_${userId}`
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${difyApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
+
+    const reply = difyResponse.data.answer || '抱歉，我现在无法回答。';
+    const newConversationId = difyResponse.data.conversation_id || conversationId || `conv_client_${Date.now()}`;
+
+    console.log(`  回复长度: ${reply.length}`);
+    console.log(`  新对话ID: ${newConversationId}`);
 
     return success(res, {
       reply,
-      conversationId: conversationId || `conv_client_${Date.now()}`,
+      conversationId: newConversationId,
       timestamp: Date.now()
     }, '消息发送成功');
   } catch (error) {
     console.error('AI顾问聊天失败:', error);
+    console.error('错误详情:', error.response?.data || error.message);
     return failure(res, error.message || '聊天失败', 500);
   }
 });
 
-// AI顾问聊天 - 监护人端（HTTP API，当 WebSocket 不可用时使用）
+// AI顾问聊天 - 监护人端（使用 dify API）
 router.post('/chat/guardian', authRequired, requireRole('guardian'), async (req, res) => {
   try {
     const userId = req.user.id;
@@ -976,24 +1009,59 @@ router.post('/chat/guardian', authRequired, requireRole('guardian'), async (req,
       return failure(res, '消息内容不能为空', 400);
     }
 
-    console.log(`\n[AI顾问聊天-监护人] 用户 ${userId} 发送消息`);
+    console.log(`\n[AI顾问聊天-监护人-dify] 用户 ${userId} 发送消息`);
     console.log(`  对话ID: ${conversationId || '新对话'}`);
     console.log(`  消息: ${message}`);
 
-    const reply = '您好！我是AI顾问 AI，专为家属提供老年人健康管理服务。WebSocket 连接暂时不可用，我正在通过 HTTP 方式为您服务。您的消息已收到，但完整的对话功能需要 WebSocket 连接。请稍后再试或联系管理员。';
+    // 调用 dify API（使用统一配置）
+    const difyApiKey = process.env.DIFY_API_KEY;
+    const difyApiUrl = process.env.DIFY_API_URL || 'https://api.dify.ai/v1';
+    
+    if (!difyApiKey || difyApiKey.includes('your_')) {
+      console.error('dify API Key 未配置');
+      return failure(res, 'AI 服务配置错误', 500);
+    }
+
+    const axios = require('axios');
+    
+    // 构建 dify API 请求
+    const difyResponse = await axios.post(
+      `${difyApiUrl}/chat-messages`,
+      {
+        inputs: {},
+        query: message,
+        response_mode: 'blocking',
+        conversation_id: conversationId || '',
+        user: `guardian_${userId}`
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${difyApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
+
+    const reply = difyResponse.data.answer || '抱歉，我现在无法回答。';
+    const newConversationId = difyResponse.data.conversation_id || conversationId || `conv_guardian_${Date.now()}`;
+
+    console.log(`  回复长度: ${reply.length}`);
+    console.log(`  新对话ID: ${newConversationId}`);
 
     return success(res, {
       reply,
-      conversationId: conversationId || `conv_guardian_${Date.now()}`,
+      conversationId: newConversationId,
       timestamp: Date.now()
     }, '消息发送成功');
   } catch (error) {
     console.error('AI顾问聊天失败:', error);
+    console.error('错误详情:', error.response?.data || error.message);
     return failure(res, error.message || '聊天失败', 500);
   }
 });
 
-// AI顾问聊天 - 政府端（HTTP API，当 WebSocket 不可用时使用）
+// AI顾问聊天 - 政府端（使用 dify API）
 router.post('/chat/gov', authRequired, requireRole('gov'), async (req, res) => {
   try {
     const userId = req.user.id;
@@ -1003,19 +1071,54 @@ router.post('/chat/gov', authRequired, requireRole('gov'), async (req, res) => {
       return failure(res, '消息内容不能为空', 400);
     }
 
-    console.log(`\n[AI顾问聊天-政府] 用户 ${userId} 发送消息`);
+    console.log(`\n[AI顾问聊天-政府-dify] 用户 ${userId} 发送消息`);
     console.log(`  对话ID: ${conversationId || '新对话'}`);
     console.log(`  消息: ${message}`);
 
-    const reply = '您好！我是AI顾问 AI，专为社区工作者提供健康管理支持。WebSocket 连接暂时不可用，我正在通过 HTTP 方式为您服务。您的消息已收到，但完整的对话功能需要 WebSocket 连接。请稍后再试或联系管理员。';
+    // 调用 dify API（使用统一配置）
+    const difyApiKey = process.env.DIFY_API_KEY;
+    const difyApiUrl = process.env.DIFY_API_URL || 'https://api.dify.ai/v1';
+    
+    if (!difyApiKey || difyApiKey.includes('your_')) {
+      console.error('dify API Key 未配置');
+      return failure(res, 'AI 服务配置错误', 500);
+    }
+
+    const axios = require('axios');
+    
+    // 构建 dify API 请求
+    const difyResponse = await axios.post(
+      `${difyApiUrl}/chat-messages`,
+      {
+        inputs: {},
+        query: message,
+        response_mode: 'blocking',
+        conversation_id: conversationId || '',
+        user: `gov_${userId}`
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${difyApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
+
+    const reply = difyResponse.data.answer || '抱歉，我现在无法回答。';
+    const newConversationId = difyResponse.data.conversation_id || conversationId || `conv_gov_${Date.now()}`;
+
+    console.log(`  回复长度: ${reply.length}`);
+    console.log(`  新对话ID: ${newConversationId}`);
 
     return success(res, {
       reply,
-      conversationId: conversationId || `conv_gov_${Date.now()}`,
+      conversationId: newConversationId,
       timestamp: Date.now()
     }, '消息发送成功');
   } catch (error) {
     console.error('AI顾问聊天失败:', error);
+    console.error('错误详情:', error.response?.data || error.message);
     return failure(res, error.message || '聊天失败', 500);
   }
 });

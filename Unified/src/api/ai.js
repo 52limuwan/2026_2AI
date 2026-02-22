@@ -1,8 +1,22 @@
 import http from './http'
 import { unwrap } from './http'
+import { useUserStore } from '../stores/user'
 
-export const sendXiaozhiMessage = (payload) =>
-  http.post('/ai/chat', payload).then((res) => unwrap(res))
+// 根据用户角色发送消息到对应的 dify API 端点
+export const sendXiaozhiMessage = (payload) => {
+  const userStore = useUserStore()
+  const role = userStore.profile?.role || 'client'
+  
+  // 根据角色选择端点
+  let endpoint = '/ai/chat/client'
+  if (role === 'guardian') {
+    endpoint = '/ai/chat/guardian'
+  } else if (role === 'gov') {
+    endpoint = '/ai/chat/gov'
+  }
+  
+  return http.post(endpoint, payload).then((res) => unwrap(res))
+}
 
 // 获取聊天记录
 export const getChatMessages = (params = {}) =>

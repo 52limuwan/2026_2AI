@@ -900,6 +900,7 @@ const stopSkillAnimation = () => {
 }
 
 // 发送消息
+// 发送消息 - 文字聊天使用 dify API
 const handleSend = async () => {
   const content = inputText.value.trim()
   if (!content || isLoading.value || isThinking.value) return
@@ -928,23 +929,8 @@ const handleSend = async () => {
   isThinking.value = true
   
   try {
-    // 尝试使用 WebSocket（如果已连接）
-    if (wsConnected.value) {
-      const success = ws.sendTextMessage(content)
-      if (success) {
-        // WebSocket 发送成功，设置超时
-        setTimeout(() => {
-          if (isThinking.value) {
-            isThinking.value = false
-            showToast('响应超时，请重试')
-          }
-        }, 30000) // 30秒超时
-        return
-      }
-    }
-    
-    // WebSocket 不可用或发送失败，使用 HTTP API
-    console.log('使用 HTTP API 发送消息')
+    // 文字聊天使用 dify API
+    console.log('使用 dify API 发送文字消息')
     
     // 如果没有会话ID，先创建一个
     if (!conversationId.value) {
@@ -952,7 +938,7 @@ const handleSend = async () => {
       conversationId.value = result.conversationId
     }
     
-    // 通过 HTTP API 发送消息
+    // 通过 dify API 发送消息
     const response = await sendXiaozhiMessage({
       conversationId: conversationId.value,
       message: content
