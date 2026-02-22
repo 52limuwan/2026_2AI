@@ -36,40 +36,36 @@
           </div>
         </div>
 
-        <!-- AI 思考中 -->
-        <div v-if="isThinking && !isStreaming" class="message-item message-ai">
-          <div class="message-bubble">
-            <div class="message-content thinking-indicator">
-              <span class="thinking-text">思考中</span>
-              <span class="thinking-dots">
-                <span></span>
-                <span></span>
-                <span></span>
-              </span>
-            </div>
-          </div>
-        </div>
-        
         <!-- Agent Skill 技能调用展示 -->
         <div v-if="skillCallSteps.length > 0" class="skill-call-container">
           <div
             v-for="(step, index) in skillCallSteps"
-            :key="index"
+            :key="`skill-${index}-${step.type}`"
             class="skill-call-item"
+            :class="{ 'thinking-block': step.type === 'thinking' }"
           >
             <div class="skill-call-header">
-              <div class="skill-call-icon">
-                <svg v-if="step.type === 'read'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-                  <path fill="currentColor" d="M660.48 661.205333a38.4 38.4 0 0 1 0 76.8H363.52a38.4 38.4 0 0 1 0-76.8h296.96zM526.336 473.6a38.4 38.4 0 0 1 0 76.8H363.52a38.4 38.4 0 0 1 0-76.8h162.773333z"></path>
-                  <path fill="currentColor" d="M562.005333 89.6c32.810667 0 64.298667 13.056 87.466667 36.266667l163.370667 163.285333c23.210667 23.210667 36.266667 54.698667 36.266666 87.509333V768A166.4 166.4 0 0 1 682.666667 934.4H341.333333A166.442667 166.442667 0 0 1 174.933333 768V256c0-91.904 74.496-166.4 166.4-166.4h220.672z"></path>
-                </svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-                  <path fill="currentColor" d="M512 384a128 128 0 1 1 0 256 128 128 0 0 1 0-256z"></path>
-                </svg>
-              </div>
-              <span class="skill-call-title">{{ step.title }}</span>
-              <span v-if="step.skillName" class="skill-call-name">{{ step.skillName }}</span>
+              <span 
+                class="skill-call-title" 
+                :class="{ 
+                  'thinking-shimmer': step.type === 'thinking',
+                  'text-transition': step.isTransitioning
+                }"
+              >{{ step.title }}</span>
+              <span 
+                v-if="step.skillName" 
+                class="skill-call-name"
+                :class="{ 
+                  'text-transition': step.isTransitioning,
+                  'fade-in': step.isFadingIn
+                }"
+              >{{ step.skillName }}</span>
             </div>
+            <transition name="skill-content-expand">
+              <div v-if="step.expanded && step.content" class="skill-call-content">
+                <div class="skill-content-text">{{ step.content }}</div>
+              </div>
+            </transition>
           </div>
         </div>
 
@@ -806,30 +802,93 @@ const startSkillAnimation = () => {
     clearTimeout(skillAnimationTimer)
   }
   
-  // 步骤1: 延迟1秒后显示"读取技能"
+  // 步骤1: 立即显示"思考中"
+  skillCallSteps.value.push({
+    type: 'thinking',
+    title: '思考中',
+    skillName: ''
+  })
+  scrollToBottom()
+  
+  // 步骤2: 延迟1秒后显示"阅读 SKILL"（没有右侧文字）
   setTimeout(() => {
+    const readStepIndex = skillCallSteps.value.length
     skillCallSteps.value.push({
       type: 'read',
-      title: '读取',
-      skillName: activeSkill.value
+      title: '阅读 SKILL',
+      skillName: '', // 先不显示
+      isTransitioning: false
     })
+    scrollToBottom()
+    
+    // 步骤2.1: 延迟0.5秒后显示右侧的 ls 命令，带淡入动画
+    setTimeout(() => {
+      const readStep = skillCallSteps.value[readStepIndex]
+      if (readStep) {
+        readStep.skillName = 'ls /app/.sshb/skills/'
+        readStep.isFadingIn = true
+        // 强制Vue更新
+        skillCallSteps.value = [...skillCallSteps.value]
+        
+        // 动画结束后移除 fade-in 类
+        setTimeout(() => {
+          readStep.isFadingIn = false
+          skillCallSteps.value = [...skillCallSteps.value]
+        }, 500)
+      }
+    }, 500)
+    
+    // 步骤2.5: 再延迟1.5秒后开始过渡动画（0.5 + 1 = 1.5）
+    setTimeout(() => {
+      const readStep = skillCallSteps.value[readStepIndex]
+      if (readStep) {
+        readStep.isTransitioning = true
+        // 强制Vue更新
+        skillCallSteps.value = [...skillCallSteps.value]
+        
+        // 步骤2.6: 延迟0.25秒后（动画中间点，完全模糊时）更新文字
+        setTimeout(() => {
+          readStep.title = '读取技能'
+          // 从完整技能名提取文件名（去掉" - "后面的部分）
+          const skillFileName = activeSkill.value.split(' - ')[0] + '.md'
+          readStep.skillName = skillFileName
+          // 强制Vue更新
+          skillCallSteps.value = [...skillCallSteps.value]
+        }, 250)
+        
+        // 步骤2.7: 延迟0.5秒后（动画结束）停止过渡状态
+        setTimeout(() => {
+          readStep.isTransitioning = false
+          // 强制Vue更新
+          skillCallSteps.value = [...skillCallSteps.value]
+        }, 500)
+      }
+    }, 1500)
   }, 1000)
   
-  // 步骤2: 再延迟1.5秒后显示"使用技能"
+  // 步骤3: 延迟4秒后显示"使用技能"（1 + 1.5 + 0.5 + 1 = 4）
   setTimeout(() => {
     skillCallSteps.value.push({
       type: 'use',
       title: '使用技能',
       skillName: activeSkill.value
     })
-  }, 2500)
+    scrollToBottom()
+  }, 4000)
   
   // 不再清空，让技能调用步骤一直保留
 }
 
 // 停止技能调用展示
 const stopSkillAnimation = () => {
-  // 不清空 skillCallSteps，让它保留在界面上
+  // 更新"思考中"为"思考已完成"
+  const thinkingStep = skillCallSteps.value.find(step => step.type === 'thinking')
+  if (thinkingStep) {
+    thinkingStep.title = '思考已完成'
+    thinkingStep.type = 'thinking-done' // 改变类型以停止动画
+    scrollToBottom()
+  }
+  
   activeSkill.value = ''
   if (skillAnimationTimer) {
     clearTimeout(skillAnimationTimer)
@@ -1658,15 +1717,27 @@ onMounted(async () => {
   flex-direction: column;
   gap: 8px;
   margin: 12px 0;
-  animation: fadeIn 0.3s ease;
 }
 
 .skill-call-item {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   transition: all 0.2s ease;
+  animation: skillItemFadeIn 0.4s ease;
+  min-height: 44px;
+}
+
+@keyframes skillItemFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .skill-call-item:hover {
@@ -1679,28 +1750,81 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.skill-call-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  color: var(--muted);
-}
-
-.skill-call-icon svg {
-  width: 100%;
-  height: 100%;
-}
-
 .skill-call-title {
   font-size: calc(var(--fs-body) * var(--font-scale) * 0.9);
   color: var(--text);
   font-weight: 500;
+  transition: filter 0.5s ease, opacity 0.5s ease;
+}
+
+/* 文本过渡动画 - 模糊渐变效果 */
+.text-transition {
+  animation: textBlurTransition 0.5s ease-in-out;
+}
+
+@keyframes textBlurTransition {
+  0% {
+    filter: blur(0px);
+    opacity: 1;
+  }
+  50% {
+    filter: blur(3px);
+    opacity: 0.5;
+  }
+  100% {
+    filter: blur(0px);
+    opacity: 1;
+  }
+}
+
+/* 思考中光束扫过动画 */
+.thinking-shimmer {
+  position: relative;
+  background: linear-gradient(
+    90deg,
+    var(--text) 0%,
+    var(--text) 40%,
+    rgba(255, 255, 255, 0.9) 50%,
+    var(--text) 60%,
+    var(--text) 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2s infinite linear;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .skill-call-name {
   font-size: calc(var(--fs-body) * var(--font-scale) * 0.85);
   color: var(--muted);
   margin-left: auto;
+  transition: filter 0.5s ease, opacity 0.5s ease;
+}
+
+/* 文本淡入动画 */
+.skill-call-name.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .skill-text-blur-leave-from {
