@@ -1139,7 +1139,254 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000); // 每10分钟检查一次
 
-// AI顾问聊天 - 客户端（使用 dify API）
+// AI顾问聊天 - 客户端（使用 dify API - 流式输出）
+router.post('/chat/client/stream', authRequired, requireRole('client'), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { conversationId, message } = req.body;
+
+    if (!message || !message.trim()) {
+      return failure(res, '消息内容不能为空', 400);
+    }
+
+    console.log(`\n[AI顾问聊天-客户端-dify-流式] 用户 ${userId} 发送消息`);
+    console.log(`  对话ID: ${conversationId || '新对话'}`);
+    console.log(`  消息: ${message}`);
+
+    // 识别技能
+    const detectedSkill = detectSkill(message);
+    let skillContent = '';
+    let shouldUpdateSkill = false;
+    let cachedSkill = null;
+    
+    // 如果有会话ID，检查缓存的技能
+    if (conversationId && conversationId.trim()) {
+      cachedSkill = conversationSkillCache.get(conversationId);
+      if (cachedSkill) {
+        console.log(`  缓存的技能: ${cachedSkill.name}`);
+      }
+    }
+    
+    // 决定是否需要更新技能
+    if (detectedSkill) {
+      // 检测到新技能
+      if (!cachedSkill || cachedSkill.name !== detectedSkill.name) {
+        // 新对话或技能切换
+        shouldUpdateSkill = true;
+        console.log(`  检测到技能: ${detectedSkill.name} (${shouldUpdateSkill ? '新技能/切换' : '已缓存'})`);
+        console.log(`  技能文件: ${detectedSkill.file}`);
+        
+        // 读取技能文件内容
+        skillContent = await readSkillFile(detectedSkill.file);
+        
+        if (skillContent) {
+          console.log(`  ✓ 技能内容读取成功`);
+          console.log(`  技能内容长度: ${skillContent.length} 字符`);
+          console.log(`  技能内容前200字: ${skillContent.substring(0, 200)}`);
+          // 更新缓存
+          if (conversationId && conversationId.trim()) {
+            conversationSkillCache.set(conversationId, {
+              name: detectedSkill.name,
+              file: detectedSkill.file,
+              content: skillContent,
+              timestamp: Date.now()
+            });
+          }
+        } else {
+          console.log(`  ✗ 技能文件读取失败`);
+        }
+      } else {
+        // 使用缓存的技能
+        console.log(`  使用缓存的技能: ${cachedSkill.name}`);
+        console.log(`  缓存内容长度: ${cachedSkill.content.length} 字符`);
+        skillContent = cachedSkill.content;
+        // 更新时间戳
+        cachedSkill.timestamp = Date.now();
+      }
+    } else if (cachedSkill) {
+      // 没有检测到新技能，但有缓存的技能，继续使用
+      console.log(`  继续使用缓存的技能: ${cachedSkill.name}`);
+      console.log(`  缓存内容长度: ${cachedSkill.content.length} 字符`);
+      skillContent = cachedSkill.content;
+      // 更新时间戳
+      cachedSkill.timestamp = Date.now();
+    } else {
+      console.log(`  未检测到技能，使用通用对话模式`);
+    }
+
+    // 调用 dify API
+    const difyApiKey = process.env.DIFY_API_KEY;
+    const difyApiUrl = process.env.DIFY_API_URL || 'https://api.dify.ai/v1';
+    
+    console.log(`  Dify API URL: ${difyApiUrl}`);
+    console.log(`  Dify API Key: ${difyApiKey ? difyApiKey.substring(0, 10) + '...' : '未配置'}`);
+    
+    if (!difyApiKey || difyApiKey.includes('your_')) {
+      console.error('dify API Key 未配置');
+      return failure(res, 'AI 服务配置错误', 500);
+    }
+    
+    // 构建 dify API 请求体
+    const requestBody = {
+      files: [],
+      inputs: {
+        systemprompt: skillContent || ''
+      },
+      query: message,
+      response_mode: 'streaming', // 使用流式模式
+      user: `user_${userId}`
+    };
+    
+    // 只有当 conversationId 存在且有效时才添加
+    if (conversationId && conversationId.trim()) {
+      requestBody.conversation_id = conversationId;
+    }
+    
+    console.log(`  请求体结构:`);
+    console.log(`    - query: ${message}`);
+    console.log(`    - systemprompt 长度: ${skillContent.length} 字符`);
+    if (skillContent) {
+      console.log(`    - systemprompt 预览: ${skillContent.substring(0, 200)}...`);
+    }
+    console.log(`    - conversation_id: ${conversationId || '(新对话)'}`);
+    console.log(`    - 技能状态: ${shouldUpdateSkill ? '新技能/切换' : cachedSkill ? '使用缓存' : '无技能'}`);
+    console.log(`    - response_mode: streaming`);
+    
+    console.log(`  请求 URL: ${difyApiUrl}/chat-messages`);
+    
+    // 设置 SSE 响应头
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // 禁用 nginx 缓冲
+    
+    const startTime = Date.now();
+    
+    // 使用流式模式
+    const difyResponse = await axios.post(
+      `${difyApiUrl}/chat-messages`,
+      requestBody,
+      {
+        headers: {
+          'Authorization': `Bearer ${difyApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        responseType: 'stream',
+        timeout: 0
+      }
+    );
+    
+    let fullReply = '';
+    let newConversationId = conversationId;
+    let buffer = ''; // 添加缓冲区处理不完整的行
+    
+    // 处理流式响应
+    difyResponse.data.on('data', (chunk) => {
+      // 将新数据添加到缓冲区
+      buffer += chunk.toString();
+      
+      // 按行分割，保留最后一个不完整的行
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // 保留最后一个可能不完整的行
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const jsonStr = line.substring(6).trim();
+            if (!jsonStr) continue; // 跳过空行
+            
+            const data = JSON.parse(jsonStr);
+            
+            // 处理不同类型的事件
+            if (data.event === 'message') {
+              // 文本内容 - 将大块文本拆分成小片段发送，模拟打字效果
+              const content = data.answer || '';
+              fullReply += content;
+              
+              // 每次发送 2-3 个字符，模拟自然的打字速度
+              const chunkSize = Math.floor(Math.random() * 2) + 2; // 随机 2-3 个字符
+              for (let i = 0; i < content.length; i += chunkSize) {
+                const textChunk = content.slice(i, i + chunkSize);
+                res.write(`data: ${JSON.stringify({ type: 'text', content: textChunk })}\n\n`);
+              }
+              
+            } else if (data.event === 'message_end') {
+              // 消息结束
+              newConversationId = data.conversation_id || conversationId;
+              
+              const duration = Date.now() - startTime;
+              console.log(`  Dify 响应完成 (耗时: ${(duration / 1000).toFixed(2)} 秒)`);
+              console.log(`  回复长度: ${fullReply.length}`);
+              console.log(`  新对话ID: ${newConversationId}`);
+              
+              // 如果是新对话，更新缓存的会话ID
+              if (newConversationId && (!conversationId || conversationId !== newConversationId)) {
+                if (skillContent && detectedSkill) {
+                  conversationSkillCache.set(newConversationId, {
+                    name: detectedSkill.name,
+                    file: detectedSkill.file,
+                    content: skillContent,
+                    timestamp: Date.now()
+                  });
+                  console.log(`  已缓存技能到新会话: ${newConversationId}`);
+                }
+              }
+              
+              // 发送结束事件
+              res.write(`data: ${JSON.stringify({ 
+                type: 'end', 
+                conversationId: newConversationId,
+                fullReply,
+                skillUsed: detectedSkill ? detectedSkill.name : (cachedSkill ? cachedSkill.name : null),
+                skillStatus: shouldUpdateSkill ? 'new' : (cachedSkill ? 'cached' : 'none')
+              })}\n\n`);
+              res.end();
+              
+            } else if (data.event === 'error') {
+              // 错误
+              console.error('  Dify 返回错误:', data);
+              res.write(`data: ${JSON.stringify({ type: 'error', message: data.message || '发生错误' })}\n\n`);
+              res.end();
+            }
+          } catch (e) {
+            // 忽略 JSON 解析错误，可能是不完整的数据
+            if (e instanceof SyntaxError && e.message.includes('JSON')) {
+              // 将这行重新加回缓冲区，等待更多数据
+              buffer = line + '\n' + buffer;
+            } else {
+              console.error('  解析 Dify 响应失败:', e);
+            }
+          }
+        }
+      }
+    });
+    
+    difyResponse.data.on('end', () => {
+      if (!res.writableEnded) {
+        res.end();
+      }
+    });
+    
+    difyResponse.data.on('error', (error) => {
+      console.error('  流式响应错误:', error);
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+        res.end();
+      }
+    });
+    
+  } catch (error) {
+    console.error('AI顾问聊天失败:', error);
+    console.error('错误详情:', error.response?.data || error.message);
+    
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message || '聊天失败' })}\n\n`);
+      res.end();
+    }
+  }
+});
+
+// AI顾问聊天 - 客户端（使用 dify API - 阻塞模式，保留用于兼容）
 router.post('/chat/client', authRequired, requireRole('client'), async (req, res) => {
   try {
     const userId = req.user.id;

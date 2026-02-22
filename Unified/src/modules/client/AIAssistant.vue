@@ -916,7 +916,7 @@ const stopSkillAnimation = () => {
   }
 }
 
-// 发送消息 - 文字聊天使用 dify API
+// 发送消息 - 文字聊天使用 dify API（流式输出）
 const handleSend = async () => {
   const content = inputText.value.trim()
   if (!content || isLoading.value || isThinking.value) return
@@ -965,73 +965,154 @@ const handleSend = async () => {
   // 显示"思考中"状态
   isThinking.value = true
   
+  // 创建空的 AI 消息，准备接收流式内容
+  const aiMessage = {
+    role: 'ai',
+    content: '',
+    timestamp: Date.now(),
+    skillSteps: null
+  }
+  messages.value.push(aiMessage)
+  const aiMessageIndex = messages.value.length - 1
+  
   try {
-    // 文字聊天使用 dify API（阻塞模式）
-    console.log('使用 dify API 发送文字消息')
+    console.log('使用流式 API 发送消息')
     console.log('会话ID:', conversationId.value || '(空)')
     console.log('消息内容:', content)
     
-    // 通过 dify API 发送消息
-    const response = await sendXiaozhiMessage({
-      conversationId: conversationId.value || '',
-      message: content
+    // 使用流式 API
+    const token = localStorage.getItem('token')
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
+    const endpoint = `${baseURL}/ai/chat/client/stream`
+    
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        conversationId: conversationId.value || '',
+        message: content
+      })
     })
     
-    console.log('收到响应:', response)
-    
-    // 更新会话ID - 确保保存到本地
-    if (response.conversationId) {
-      conversationId.value = response.conversationId
-      console.log('更新会话ID:', response.conversationId)
-      
-      // 保存会话ID到 localStorage，确保刷新后仍然保持
-      localStorage.setItem('current_conversation_id', response.conversationId)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
     
-    isThinking.value = false
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
     
-    // 更新技能卡片状态为完成
-    if (messages.value[userMessageIndex].skillSteps) {
-      const thinkingStep = messages.value[userMessageIndex].skillSteps.find(s => s.type === 'thinking')
-      if (thinkingStep) {
-        thinkingStep.title = '思考已完成'
-        thinkingStep.type = 'thinking-done'
+    console.log('[流式输出] 开始接收数据')
+    
+    let buffer = ''
+    let textQueue = [] // 文本队列
+    let isProcessing = false // 是否正在处理队列
+    
+    // 处理文本队列，模拟打字效果
+    const processQueue = async () => {
+      if (isProcessing || textQueue.length === 0) return
+      
+      isProcessing = true
+      while (textQueue.length > 0) {
+        const text = textQueue.shift()
+        messages.value[aiMessageIndex].content += text
+        scrollToBottom()
+        
+        // 添加小延迟，模拟打字速度（10-20ms）
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 10 + 10))
+      }
+      isProcessing = false
+    }
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      
+      if (done) {
+        console.log('[流式输出] 数据接收完成')
+        // 等待队列处理完成
+        while (textQueue.length > 0) {
+          await new Promise(resolve => setTimeout(resolve, 50))
+        }
+        break
       }
       
-      // 如果有技能，确保技能卡片显示完整
-      if (detectedSkill && messages.value[userMessageIndex].skillSteps.length === 3) {
-        // 技能卡片已完整，无需额外操作
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // 保留最后一个不完整的行
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.substring(6))
+            
+            if (data.type === 'text') {
+              // 停止思考状态（首次收到文本时）
+              if (isThinking.value) {
+                isThinking.value = false
+                
+                // 更新技能卡片状态为完成
+                if (messages.value[userMessageIndex].skillSteps) {
+                  const thinkingStep = messages.value[userMessageIndex].skillSteps.find(s => s.type === 'thinking')
+                  if (thinkingStep) {
+                    thinkingStep.title = '思考已完成'
+                    thinkingStep.type = 'thinking-done'
+                  }
+                }
+              }
+              
+              // 将文本加入队列
+              textQueue.push(data.content)
+              
+              // 启动队列处理
+              processQueue()
+              
+            } else if (data.type === 'end') {
+              console.log('[流式输出] 收到结束事件')
+              console.log('  新会话ID:', data.conversationId)
+              console.log('  完整回复长度:', data.fullReply?.length || 0)
+              
+              // 更新会话ID
+              if (data.conversationId) {
+                conversationId.value = data.conversationId
+                localStorage.setItem('current_conversation_id', data.conversationId)
+              }
+              
+              // 等待队列处理完成后再保存
+              while (textQueue.length > 0 || isProcessing) {
+                await new Promise(resolve => setTimeout(resolve, 50))
+              }
+              
+              // 确保 AI 消息内容完整
+              if (data.fullReply && messages.value[aiMessageIndex].content !== data.fullReply) {
+                messages.value[aiMessageIndex].content = data.fullReply
+              }
+              
+              // 保存 AI 回复到数据库
+              saveMessageToDatabase(messages.value[aiMessageIndex])
+              
+              // 保存用户消息的技能卡片信息
+              if (messages.value[userMessageIndex].skillSteps) {
+                saveMessageToDatabase(messages.value[userMessageIndex])
+              }
+              
+              scrollToBottom()
+              
+            } else if (data.type === 'error') {
+              console.error('[流式输出] 错误:', data.message)
+              throw new Error(data.message || '发生错误')
+            }
+          } catch (e) {
+            console.error('[流式输出] 解析数据失败:', e, line)
+          }
+        }
       }
     }
-    
-    // 添加 AI 回复
-    const aiMessage = {
-      role: 'ai',
-      content: response.reply || '抱歉，我现在无法回答。',
-      timestamp: Date.now(),
-      skillSteps: null // AI 消息没有技能卡片
-    }
-    console.log('添加 AI 消息，完整长度:', aiMessage.content.length)
-    messages.value.push(aiMessage)
-    
-    // 保存 AI 回复到数据库（包含技能信息）
-    saveMessageToDatabase(aiMessage)
-    
-    // 同时更新用户消息，保存技能卡片信息
-    if (messages.value[userMessageIndex].skillSteps) {
-      saveMessageToDatabase(messages.value[userMessageIndex])
-    }
-    
-    // 模拟流式输出效果
-    const messageIndex = messages.value.length - 1
-    await streamText(response.reply || '抱歉，我现在无法回答。', messageIndex)
-    
-    scrollToBottom()
     
   } catch (err) {
     console.error('发送消息失败:', err)
     isThinking.value = false
-    isLoading.value = false
     
     // 更新技能卡片状态为失败
     if (messages.value[userMessageIndex].skillSteps) {
@@ -1040,6 +1121,11 @@ const handleSend = async () => {
         thinkingStep.title = '思考失败'
         thinkingStep.type = 'thinking-failed'
       }
+    }
+    
+    // 如果 AI 消息为空，显示错误信息
+    if (!messages.value[aiMessageIndex].content) {
+      messages.value[aiMessageIndex].content = '抱歉，发送失败，请稍后重试。'
     }
     
     showToast('发送失败，请稍后重试')
