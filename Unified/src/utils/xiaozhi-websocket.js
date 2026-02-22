@@ -418,7 +418,7 @@ class XiaozhiWebSocket {
   }
 
   // 发送文本消息
-  sendTextMessage(text) {
+  sendTextMessage(text, historyMessages = []) {
     if (!text || !this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
       return false
     }
@@ -434,16 +434,33 @@ class XiaozhiWebSocket {
         this.websocket.send(JSON.stringify(abortMessage))
       }
 
-      // 发送文本消息
+      // 构建历史消息上下文（格式化为对话历史）
+      let contextText = ''
+      if (historyMessages && historyMessages.length > 0) {
+        // 只取最近的10条消息作为上下文
+        const recentMessages = historyMessages.slice(-10)
+        contextText = recentMessages.map(msg => {
+          const role = msg.role === 'user' ? '用户' : 'AI'
+          return `${role}: ${msg.content}`
+        }).join('\n')
+        
+        console.log(`附带历史消息上下文 (${recentMessages.length} 条)`)
+      }
+
+      // 发送文本消息（包含历史上下文）
       const listenMessage = {
         type: 'listen',
         mode: 'manual',
         state: 'detect',
-        text: text
+        text: text,
+        context: contextText || undefined // 只在有历史消息时添加 context 字段
       }
 
       this.websocket.send(JSON.stringify(listenMessage))
       console.log('发送文本消息:', text)
+      if (contextText) {
+        console.log('包含历史上下文:', contextText.substring(0, 200) + '...')
+      }
       return true
     } catch (error) {
       console.error('发送消息错误:', error)
@@ -467,18 +484,37 @@ class XiaozhiWebSocket {
   }
 
   // 开始录音会话
-  startAudioSession() {
+  startAudioSession(historyMessages = []) {
     if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
       return false
     }
 
     try {
+      // 构建历史消息上下文
+      let context = ''
+      if (historyMessages && historyMessages.length > 0) {
+        // 只取最近的10条消息作为上下文
+        const recentMessages = historyMessages.slice(-10)
+        context = recentMessages.map(msg => {
+          const role = msg.role === 'user' ? '用户' : 'AI'
+          return `${role}: ${msg.content}`
+        }).join('\n')
+        
+        console.log(`开始录音会话，附带历史消息上下文 (${recentMessages.length} 条)`)
+      }
+
       const message = {
         type: 'listen',
         mode: 'manual',
-        state: 'start'
+        state: 'start',
+        context: context || undefined // 只在有历史消息时添加 context 字段
       }
       this.websocket.send(JSON.stringify(message))
+      
+      if (context) {
+        console.log('历史上下文预览:', context.substring(0, 200) + '...')
+      }
+      
       return true
     } catch (error) {
       console.error('开始录音会话错误:', error)

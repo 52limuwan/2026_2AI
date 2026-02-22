@@ -630,13 +630,44 @@ const handleWebSocketMessage = (message) => {
       const userMessage = {
         role: 'user',
         content: message.text,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        skillSteps: null
       }
       messages.value.push(userMessage)
+      const userMessageIndex = messages.value.length - 1
       scrollToBottom()
       
       // 保存用户消息到数据库
       saveMessageToDatabase(userMessage)
+      
+      // 识别技能并为这条消息创建技能卡片（与文字聊天保持一致）
+      const detectedSkill = detectSkill(message.text)
+      let messageSkillSteps = []
+      
+      if (detectedSkill) {
+        // 检测到技能，先只显示"思考中"
+        activeSkill.value = detectedSkill
+        messageSkillSteps = [
+          { type: 'thinking', title: '思考中', skillName: '' }
+        ]
+        
+        // 将初始技能卡片附加到用户消息
+        messages.value[userMessageIndex].skillSteps = messageSkillSteps
+        
+        // 启动动画效果，逐步添加卡片
+        startSkillAnimationForMessage(userMessageIndex, detectedSkill)
+      } else {
+        // 没有检测到技能，只显示"思考中"
+        messageSkillSteps = [
+          { type: 'thinking', title: '思考中', skillName: '' }
+        ]
+        
+        // 将简单的思考卡片附加到用户消息
+        messages.value[userMessageIndex].skillSteps = messageSkillSteps
+      }
+      
+      // 显示"思考中"状态
+      isThinking.value = true
     }
     
   } else if (message.type === 'tts') {
@@ -651,10 +682,21 @@ const handleWebSocketMessage = (message) => {
       if (currentAiMessageIndex.value === null) {
         isThinking.value = false
         
+        // 更新最后一条用户消息的技能卡片状态为完成（如果有）
+        const lastUserMessageIndex = messages.value.findLastIndex(m => m.role === 'user')
+        if (lastUserMessageIndex !== -1 && messages.value[lastUserMessageIndex].skillSteps) {
+          const thinkingStep = messages.value[lastUserMessageIndex].skillSteps.find(s => s.type === 'thinking')
+          if (thinkingStep) {
+            thinkingStep.title = '思考已完成'
+            thinkingStep.type = 'thinking-done'
+          }
+        }
+        
         const aiMessage = {
           role: 'ai',
           content: '',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          skillSteps: null
         }
         messages.value.push(aiMessage)
         currentAiMessageIndex.value = messages.value.length - 1
@@ -713,6 +755,12 @@ const startStreaming = () => {
       // 保存完整消息到数据库
       if (message.content) {
         saveMessageToDatabase(message)
+      }
+      
+      // 保存对应的用户消息技能卡片信息（如果有）
+      const lastUserMessageIndex = messages.value.findLastIndex(m => m.role === 'user')
+      if (lastUserMessageIndex !== -1 && messages.value[lastUserMessageIndex].skillSteps) {
+        saveMessageToDatabase(messages.value[lastUserMessageIndex])
       }
       
       // 重置状态
@@ -1241,6 +1289,14 @@ const callStatusText = computed(() => {
 
 // 处理电话呼叫
 const handlePhoneCall = async (event) => {
+  // 先保存按钮位置信息（在异步操作前）
+  const button = event.currentTarget
+  if (!button) {
+    console.error('无法获取按钮元素')
+    return
+  }
+  const rect = button.getBoundingClientRect()
+  
   // 检查 WebSocket 是否已连接
   if (!wsConnected.value) {
     // 尝试连接 WebSocket
@@ -1260,9 +1316,7 @@ const handlePhoneCall = async (event) => {
   // 启用语音模式
   ws.setVoiceMode(true)
 
-  // 获取按钮位置
-  const button = event.currentTarget
-  const rect = button.getBoundingClientRect()
+  // 使用之前保存的按钮位置
   const centerX = rect.left + rect.width / 2
   const centerY = rect.top + rect.height / 2
   
@@ -1299,8 +1353,16 @@ const handlePhoneCall = async (event) => {
         
         // 开始语音会话
         try {
-          // 开始录音会话（发送 listen start 消息）
-          ws.startAudioSession()
+          // 准备历史消息（排除技能卡片等额外信息，只保留对话内容）
+          const historyForXiaozhi = messages.value.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          }))
+          
+          console.log(`传递 ${historyForXiaozhi.length} 条历史消息给 xiaozhi`)
+          
+          // 开始录音会话（发送 listen start 消息，附带历史上下文）
+          ws.startAudioSession(historyForXiaozhi)
           
           // 启动音频录制器
           const success = await ws.startRecording()
