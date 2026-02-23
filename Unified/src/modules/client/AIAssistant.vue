@@ -870,7 +870,6 @@ const startSkillAnimation = () => {
     clearTimeout(skillAnimationTimer)
   }
   
-  // 步骤1: 立即显示"思考中"
   skillCallSteps.value.push({
     type: 'thinking',
     title: '思考中',
@@ -878,27 +877,23 @@ const startSkillAnimation = () => {
   })
   scrollToBottom()
   
-  // 步骤2: 延迟1秒后显示"阅读 SKILL"（没有右侧文字）
   setTimeout(() => {
     const readStepIndex = skillCallSteps.value.length
     skillCallSteps.value.push({
       type: 'read',
       title: '阅读 SKILL',
-      skillName: '', // 先不显示
+      skillName: '',
       isTransitioning: false
     })
     scrollToBottom()
     
-    // 步骤2.1: 延迟0.5秒后显示右侧的 ls 命令，带淡入动画
     setTimeout(() => {
       const readStep = skillCallSteps.value[readStepIndex]
       if (readStep) {
-        readStep.skillName = 'ls /app/.sshb/skills/'
+        readStep.skillName = 'ls /app/.zshb/skills/'
         readStep.isFadingIn = true
-        // 强制Vue更新
         skillCallSteps.value = [...skillCallSteps.value]
         
-        // 动画结束后移除 fade-in 类
         setTimeout(() => {
           readStep.isFadingIn = false
           skillCallSteps.value = [...skillCallSteps.value]
@@ -906,35 +901,27 @@ const startSkillAnimation = () => {
       }
     }, 500)
     
-    // 步骤2.5: 再延迟1.5秒后开始过渡动画（0.5 + 1 = 1.5）
     setTimeout(() => {
       const readStep = skillCallSteps.value[readStepIndex]
       if (readStep) {
         readStep.isTransitioning = true
-        // 强制Vue更新
         skillCallSteps.value = [...skillCallSteps.value]
         
-        // 步骤2.6: 延迟0.25秒后（动画中间点，完全模糊时）更新文字
         setTimeout(() => {
           readStep.title = '读取技能'
-          // 从完整技能名提取文件名（去掉" - "后面的部分）
           const skillFileName = activeSkill.value.split(' - ')[0] + '.md'
           readStep.skillName = skillFileName
-          // 强制Vue更新
           skillCallSteps.value = [...skillCallSteps.value]
         }, 250)
         
-        // 步骤2.7: 延迟0.5秒后（动画结束）停止过渡状态
         setTimeout(() => {
           readStep.isTransitioning = false
-          // 强制Vue更新
           skillCallSteps.value = [...skillCallSteps.value]
         }, 500)
       }
     }, 1500)
   }, 1000)
   
-  // 步骤3: 延迟4秒后显示"使用技能"（1 + 1.5 + 0.5 + 1 = 4）
   setTimeout(() => {
     skillCallSteps.value.push({
       type: 'use',
@@ -943,13 +930,9 @@ const startSkillAnimation = () => {
     })
     scrollToBottom()
   }, 4000)
-  
-  // 不再清空，让技能调用步骤一直保留
 }
 
-// 停止技能调用展示
 const stopSkillAnimation = () => {
-  // 更新"思考中"为"思考已完成"
   const thinkingStep = skillCallSteps.value.find(step => step.type === 'thinking')
   if (thinkingStep) {
     thinkingStep.title = '思考已完成'
@@ -1185,13 +1168,9 @@ const startSkillAnimationForMessage = (messageIndex, detectedSkill) => {
   const message = messages.value[messageIndex]
   if (!message || !message.skillSteps) return
   
-  // 步骤1: 立即显示"思考中"（已经在数组中）
-  
-  // 步骤2: 延迟1秒后添加"阅读 SKILL"卡片
   setTimeout(() => {
     if (!messages.value[messageIndex] || !messages.value[messageIndex].skillSteps) return
     
-    // 添加第二个卡片
     messages.value[messageIndex].skillSteps.push({
       type: 'read',
       title: '阅读 SKILL',
@@ -1201,11 +1180,10 @@ const startSkillAnimationForMessage = (messageIndex, detectedSkill) => {
     })
     messages.value = [...messages.value]
     
-    // 延迟0.5秒后显示右侧文字
     setTimeout(() => {
       const readStep = messages.value[messageIndex].skillSteps.find(s => s.type === 'read')
       if (readStep) {
-        readStep.skillName = 'ls /app/.sshb/skills/'
+        readStep.skillName = 'ls /app/.zshb/skills/'
         readStep.isFadingIn = true
         messages.value = [...messages.value]
         
@@ -1217,14 +1195,12 @@ const startSkillAnimationForMessage = (messageIndex, detectedSkill) => {
     }, 500)
   }, 1000)
   
-  // 步骤3: 延迟2.5秒后开始过渡动画
   setTimeout(() => {
     const readStep = messages.value[messageIndex]?.skillSteps?.find(s => s.type === 'read')
     if (readStep) {
       readStep.isTransitioning = true
       messages.value = [...messages.value]
       
-      // 延迟0.25秒后更新文字
       setTimeout(() => {
         readStep.title = '读取技能'
         const skillFileName = detectedSkill.split(' - ')[0] + '.md'
@@ -1232,7 +1208,6 @@ const startSkillAnimationForMessage = (messageIndex, detectedSkill) => {
         messages.value = [...messages.value]
       }, 250)
       
-      // 延迟0.5秒后停止过渡
       setTimeout(() => {
         readStep.isTransitioning = false
         messages.value = [...messages.value]
@@ -1240,11 +1215,9 @@ const startSkillAnimationForMessage = (messageIndex, detectedSkill) => {
     }
   }, 2500)
   
-  // 步骤4: 延迟4秒后添加"使用技能"卡片
   setTimeout(() => {
     if (!messages.value[messageIndex] || !messages.value[messageIndex].skillSteps) return
     
-    // 添加第三个卡片
     messages.value[messageIndex].skillSteps.push({
       type: 'use',
       title: '使用技能',
