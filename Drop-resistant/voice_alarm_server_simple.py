@@ -1,23 +1,24 @@
 """
-防跌倒检测服务端（雷达检测 + 报警服务器）
-功能：连接雷达检测跌倒，同时作为服务器广播报警给所有远端设备
+防跌倒检测服务端 - 简化版（无TTS）
+功能：连接雷达检测跌倒，通过WebSocket广播给Web报警端
+仅支持：WebSocket客户端（Web版报警端使用浏览器内置TTS）
 """
 import serial
 import serial.tools.list_ports
 import time
-import sys
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Wedge
 from matplotlib.animation import FuncAnimation
 import threading
-import queue
-import pygame
-import os
-import ctypes
-import socket
 import json
+import asyncio
+import websockets
+import queue
+import sys
 
-# 配置matplotlib支持中文显示
+# 配置matplotlib支持中文显示和后端
+import matplotlib
+matplotlib.use('TkAgg')
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -31,12 +32,10 @@ TIMEOUT = 0.1
 FALL_FLAG = 'F1'
 PERSON_FLAG = 'E1'
 COORDINATE_SCALE = 0.001
-ALARM_SOUND_FILE = 'aviation-alarm.mp3'
 
-# ===================== 服务器配置 =====================
-SERVER_HOST = '0.0.0.0'  # 监听所有网络接口
-SERVER_PORT = 9999
-MAX_CLIENTS = 10
+# ===================== WebSocket服务器配置 =====================
+SERVER_HOST = '0.0.0.0'
+WEBSOCKET_PORT = 8765
 
 # ===================== 全局变量 =====================
 ser = None
@@ -50,76 +49,60 @@ current_radar_data = {
 trajectory_history = []
 MAX_TRAJECTORY_POINTS = 50
 fall_alert_shown = False
-alert_queue = queue.Queue()
-current_alert_window = None
 
-# 网络客户端列表
-connected_clients = []
-clients_lock = threading.Lock()
+# WebSocket客户端
+websocket_clients = set()
+ws_clients_lock = threading.Lock()
 
 # 报警历史
 alarm_history = []
 MAX_HISTORY = 100
 
-# ===================== 音频系统 =====================
-def init_audio():
-    """初始化音频系统"""
-    try:
-        pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
-        if os.path.exists(ALARM_SOUND_FILE):
-            print(f"报警音效已加载：{ALARM_SOUND_FILE}")
-            return True
-        else:
-            print(f"警告：未找到音效文件 {ALARM_SOUND_FILE}")
-            return False
-    except Exception as e:
-        print(f"音频初始化失败：{str(e)}")
-        return False
+# 日志队列（用于线程安全的日志输出）
+log_queue = queue.Queue()
+should_exit = threading.Event()
 
-def play_alarm_sound():
-    """播放报警音效"""
-    try:
-        if os.path.exists(ALARM_SOUND_FILE):
-            pygame.mixer.music.stop()
-            pygame.mixer.music.load(ALARM_SOUND_FILE)
-            pygame.mixer.music.play(loops=-1)
-            print("报警音效开始播放")
-    except Exception as e:
-        print(f"播放音效失败：{str(e)}")
+# ===================== 日志系统 =====================
+def log_print(message):
+    """线程安全的日志输出"""
+    log_queue.put(message)
 
-def stop_alarm_sound():
-    """停止报警音效"""
-    try:
-        if pygame.mixer.music.get_busy():
-            pygame.mixer.music.stop()
-            print("报警音效已停止")
-    except Exception as e:
-        print(f"停止音效失败：{str(e)}")
+def log_worker():
+    """日志输出工作线程"""
+    while not should_exit.is_set():
+        try:
+            message = log_queue.get(timeout=0.1)
+            print(message)
+            sys.stdout.flush()
+        except queue.Empty:
+            continue
+        except Exception:
+            break
 
 # ===================== 串口通信 =====================
 def auto_detect_serial_port():
     """自动检测串口"""
-    print("正在扫描串口...")
     ports = serial.tools.list_ports.comports()
     
     if not ports:
         print("未检测到串口设备")
         return None
     
-    print(f"检测到 {len(ports)} 个串口：")
-    for i, port in enumerate(ports, 1):
-        print(f"  {i}. {port.device} - {port.description}")
-    
-    priority_keywords = ['CH340', 'CP210', 'FT232', 'USB-SERIAL', 'USB SERIAL']
+    # 优先查找雷达设备常用的串口芯片
+    priority_keywords = ['CH340', 'CP210', 'FT232', 'USB-SERIAL', 'USB SERIAL', 'USB-ENHANCED']
     for port in ports:
+        if 'bluetooth' in port.description.lower() or '蓝牙' in port.description:
+            continue
+        
         for keyword in priority_keywords:
             if keyword.upper() in port.description.upper():
-                print(f"自动选择：{port.device}")
                 return port.device
     
-    selected_port = ports[0].device
-    print(f"自动选择：{selected_port}")
-    return selected_port
+    for port in ports:
+        if 'bluetooth' not in port.description.lower() and '蓝牙' not in port.description:
+            return port.device
+    
+    return None
 
 def init_serial():
     """初始化串口"""
@@ -140,11 +123,9 @@ def init_serial():
             timeout=TIMEOUT
         )
         if ser.is_open:
-            print(f"串口 {SERIAL_PORT} 已打开")
             return ser
         return None
-    except Exception as e:
-        print(f"串口初始化失败：{str(e)}")
+    except Exception:
         return None
 
 def parse_radar_data(data_str):
@@ -173,164 +154,115 @@ def parse_radar_data(data_str):
     except Exception:
         return None
 
-# ===================== 网络服务器 =====================
+# ===================== WebSocket服务器 =====================
+async def broadcast_to_websockets(message):
+    """异步广播消息给所有WebSocket客户端"""
+    if not websocket_clients:
+        return
+    
+    message_str = json.dumps(message)
+    disconnected = set()
+    
+    for ws in websocket_clients.copy():
+        try:
+            await ws.send(message_str)
+        except Exception:
+            disconnected.add(ws)
+    
+    # 移除断开的客户端
+    with ws_clients_lock:
+        for ws in disconnected:
+            websocket_clients.discard(ws)
+
 def broadcast_fall_alarm(x_position, y_position):
-    """广播跌倒报警给所有客户端"""
+    """广播跌倒报警给所有Web客户端"""
     alarm_msg = {
         'type': 'fall_alarm',
         'time': time.strftime('%Y-%m-%d %H:%M:%S'),
+        'person_name': '被监护人',
+        'location_name': f'位置({round(x_position, 2)}m, {round(y_position, 2)}m)',
         'location': {
             'x': round(x_position, 3),
             'y': round(y_position, 3)
         }
     }
     
-    # 记录到历史
     alarm_history.append(alarm_msg)
     if len(alarm_history) > MAX_HISTORY:
         alarm_history.pop(0)
     
-    broadcast_count = 0
-    failed_clients = []
-    
-    with clients_lock:
-        for client_info in connected_clients:
-            try:
-                data = json.dumps(alarm_msg).encode('utf-8')
-                client_info['socket'].sendall(data)
-                broadcast_count += 1
-                print(f"报警已发送至: {client_info['device_name']}")
-            except Exception as e:
-                print(f"发送失败: {client_info['address']}")
-                failed_clients.append(client_info)
-        
-        # 移除失败的客户端
-        for failed_client in failed_clients:
-            if failed_client in connected_clients:
-                connected_clients.remove(failed_client)
-    
-    if broadcast_count > 0:
-        print(f"报警已广播至 {broadcast_count} 个远端设备")
+    with ws_clients_lock:
+        ws_count = len(websocket_clients)
+        if ws_count > 0:
+            asyncio.run_coroutine_threadsafe(
+                broadcast_to_websockets(alarm_msg),
+                websocket_loop
+            )
 
-def handle_client(client_socket, client_address):
-    """处理客户端连接"""
-    client_info = {
-        'socket': client_socket,
-        'address': client_address,
-        'device_name': f"设备_{client_address[0]}"
-    }
-    
-    with clients_lock:
-        connected_clients.append(client_info)
-    
-    print(f"[{time.strftime('%H:%M:%S')}] 远端设备连接: {client_address}")
-    print(f"当前连接设备数: {len(connected_clients)}")
+async def websocket_handler(websocket):
+    """WebSocket连接处理器"""
+    # 添加到客户端集合
+    with ws_clients_lock:
+        websocket_clients.add(websocket)
+        log_print(f"[{time.strftime('%H:%M:%S')}] Web端连接 ({len(websocket_clients)}个在线)")
     
     try:
-        while True:
-            data = client_socket.recv(4096)
-            if not data:
-                break
-            
+        # 发送欢迎消息
+        welcome_msg = {
+            'type': 'connected',
+            'message': '已连接到检测端',
+            'time': time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+        await websocket.send(json.dumps(welcome_msg))
+        
+        # 保持连接并接收消息
+        async for message in websocket:
             try:
-                message = json.loads(data.decode('utf-8'))
-                if message.get('type') == 'register':
-                    device_name = message.get('device_name', client_info['device_name'])
-                    client_info['device_name'] = device_name
-                    print(f"设备注册: {device_name}")
-            except:
+                data = json.loads(message)
+                if data.get('type') == 'register':
+                    pass  # 静默注册
+            except json.JSONDecodeError:
                 pass
+    
+    except websockets.exceptions.ConnectionClosed:
+        pass
     except Exception:
         pass
     finally:
-        with clients_lock:
-            if client_info in connected_clients:
-                connected_clients.remove(client_info)
-        
-        try:
-            client_socket.close()
-        except:
-            pass
-        
-        print(f"[{time.strftime('%H:%M:%S')}] 设备断开: {client_address}")
-        print(f"当前连接设备数: {len(connected_clients)}")
+        # 移除客户端
+        with ws_clients_lock:
+            websocket_clients.discard(websocket)
+            log_print(f"[{time.strftime('%H:%M:%S')}] Web端断开 ({len(websocket_clients)}个在线)")
 
-def server_thread():
-    """服务器线程"""
+async def start_websocket_server():
+    """启动WebSocket服务器"""
+    async with websockets.serve(websocket_handler, SERVER_HOST, WEBSOCKET_PORT):
+        await asyncio.Future()
+
+def websocket_server_thread():
+    """WebSocket服务器线程"""
+    global websocket_loop
     try:
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_socket.bind((SERVER_HOST, SERVER_PORT))
-        server_socket.listen(MAX_CLIENTS)
-        
-        print(f"\n报警服务器已启动: {SERVER_HOST}:{SERVER_PORT}")
-        print("等待远端设备连接...\n")
-        
-        while True:
-            client_socket, client_address = server_socket.accept()
-            client_thread = threading.Thread(
-                target=handle_client,
-                args=(client_socket, client_address),
-                daemon=True
-            )
-            client_thread.start()
+        websocket_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(websocket_loop)
+        websocket_loop.run_until_complete(start_websocket_server())
     except Exception as e:
-        print(f"服务器错误: {str(e)}")
+        log_print(f"WebSocket服务器错误: {str(e)}")
 
 # ===================== 报警处理 =====================
 def show_fall_alert():
     """跌倒报警"""
-    print(f"\n{'='*50}")
-    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 检测到跌倒！")
-    print(f"{'='*50}\n")
-    
-    # 播放本地音效
-    play_alarm_sound()
-    
-    # 广播给远端设备
     x_pos = current_radar_data['x_position']
     y_pos = current_radar_data['y_position']
     broadcast_fall_alarm(x_pos, y_pos)
-    
-    # 本地弹窗
-    try:
-        alert_queue.put(time.strftime('%Y-%m-%d %H:%M:%S'))
-    except Exception as e:
-        print(f"加入报警队列失败：{str(e)}")
-
-def create_alert_window(alert_time):
-    """创建报警弹窗"""
-    global current_alert_window
-    
-    if current_alert_window is not None:
-        return
-    
-    def show_messagebox():
-        global current_alert_window
-        current_alert_window = True
-        
-        try:
-            message = f"检测到跌倒事件！\n\n时间：{alert_time}\n\n请立即查看现场情况！"
-            title = "【紧急报警】跌倒警告"
-            ctypes.windll.user32.MessageBoxW(0, message, title, 0x41030)
-        except Exception as e:
-            print(f"显示弹窗失败：{str(e)}")
-        finally:
-            stop_alarm_sound()
-            current_alert_window = None
-    
-    threading.Thread(target=show_messagebox, daemon=True).start()
 
 # ===================== 串口读取线程 =====================
 def serial_read_thread():
     """串口读取线程"""
     global ser, current_radar_data, trajectory_history, fall_alert_shown
     
-    print("\n雷达监听已启动...")
-    print(f"串口: {SERIAL_PORT} | 波特率: {BAUD_RATE}\n")
-    
     try:
-        while True:
+        while not should_exit.is_set():
             if not ser or not ser.is_open:
                 break
             
@@ -351,11 +283,6 @@ def serial_read_thread():
                             trajectory_history.append((radar_data['x_position'], radar_data['y_position']))
                             if len(trajectory_history) > MAX_TRAJECTORY_POINTS:
                                 trajectory_history.pop(0)
-                        
-                        person_status = "有人员" if radar_data['person_exist'] else "无人员"
-                        fall_status = "发生跌倒" if radar_data['fall_happened'] else "正常"
-                        position_str = f"({radar_data['x_position']}m, {radar_data['y_position']}m)"
-                        print(f"[{time.strftime('%H:%M:%S')}] {person_status} | 位置：{position_str} | {fall_status}")
                         
                         if radar_data['fall_happened'] and radar_data['person_exist']:
                             if not fall_alert_shown:
@@ -386,7 +313,7 @@ def init_radar_visualization():
     global current_radar_data, trajectory_history
     
     fig, ax = plt.subplots(figsize=(10, 8))
-    fig.canvas.manager.set_window_title('防跌倒检测服务端（雷达+服务器）')
+    fig.canvas.manager.set_window_title('防跌倒检测服务端（简化版 - 无TTS）')
     
     ax.set_xlim(-7, 7)
     ax.set_ylim(0, 7)
@@ -418,7 +345,7 @@ def init_radar_visualization():
                           fontsize=24, color='red', weight='bold',
                           ha='center', va='center')
     
-    # 远端设备状态
+    # Web客户端状态
     network_status_text = ax.text(0.98, 0.02, '', transform=ax.transAxes,
                                  fontsize=10, ha='right', va='bottom',
                                  bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
@@ -429,14 +356,10 @@ def init_radar_visualization():
         """更新动画"""
         global current_radar_data, trajectory_history
         
-        try:
-            if not alert_queue.empty():
-                alert_time = alert_queue.get_nowait()
-                create_alert_window(alert_time)
-                while not alert_queue.empty():
-                    alert_queue.get_nowait()
-        except:
-            pass
+        # 检查是否需要退出
+        if should_exit.is_set():
+            plt.close('all')
+            return target_point, trajectory_line, status_text, fall_warning, network_status_text
         
         if current_radar_data['person_exist']:
             x = current_radar_data['x_position']
@@ -466,70 +389,145 @@ def init_radar_visualization():
         status_text.set_text(status_info)
         
         if current_radar_data['fall_happened'] and current_radar_data['person_exist']:
-            fall_warning.set_text('跌倒警告')
+            fall_warning.set_text('跌倒警告\n已发送到Web端')
         else:
             fall_warning.set_text('')
         
-        # 更新远端设备数量
-        with clients_lock:
-            device_count = len(connected_clients)
-        network_status_text.set_text(f"远端设备: {device_count}")
+        # 更新Web客户端数量
+        with ws_clients_lock:
+            ws_count = len(websocket_clients)
+        network_status_text.set_text(f"Web客户端: {ws_count}")
         
         return target_point, trajectory_line, status_text, fall_warning, network_status_text
     
+    # 保存动画对象到 figure，避免被垃圾回收
     anim = FuncAnimation(fig, update_frame, interval=100, blit=False, cache_frame_data=False)
+    fig._animation = anim  # 保存引用
     
     plt.tight_layout()
-    plt.show()
+    
+    return fig
+
+# ===================== 命令处理 =====================
+def handle_commands():
+    """处理用户命令"""
+    while not should_exit.is_set():
+        try:
+            cmd = input(">>> ").strip()
+            
+            if not cmd:
+                continue
+            
+            cmd_lower = cmd.lower()
+            
+            if cmd_lower == 'test':
+                test_x = current_radar_data.get('x_position', 0)
+                test_y = current_radar_data.get('y_position', 0)
+                broadcast_fall_alarm(test_x, test_y)
+                with ws_clients_lock:
+                    ws_count = len(websocket_clients)
+                log_print(f"已发送测试警报至 {ws_count} 个Web端")
+            
+            elif cmd_lower == 'status':
+                with ws_clients_lock:
+                    ws_count = len(websocket_clients)
+                log_print(f"雷达: {'已连接' if ser and ser.is_open else '未连接'} | Web端: {ws_count} | 历史: {len(alarm_history)}")
+            
+            elif cmd_lower == 'clients':
+                with ws_clients_lock:
+                    log_print(f"Web端: {len(websocket_clients)}")
+            
+            elif cmd_lower == 'history':
+                if alarm_history:
+                    for alarm in alarm_history[-5:]:
+                        log_print(f"{alarm['time']} - X={alarm['location']['x']}m Y={alarm['location']['y']}m")
+                else:
+                    log_print("无历史记录")
+            
+            elif cmd_lower in ['quit', 'exit', 'q']:
+                log_print("正在退出...")
+                should_exit.set()
+                break
+            
+            else:
+                log_print(f"未知命令: {cmd}")
+        
+        except KeyboardInterrupt:
+            log_print("\n正在退出...")
+            should_exit.set()
+            break
+        except EOFError:
+            should_exit.set()
+            break
+        except Exception as e:
+            log_print(f"错误: {e}")
 
 # ===================== 主函数 =====================
 def main():
     """主函数"""
-    global ser
+    global ser, websocket_loop
     
-    print(f"\n{'='*60}")
-    print(f"防跌倒检测服务端（雷达检测 + 报警服务器）")
-    print(f"{'='*60}\n")
+    # 启动日志工作线程
+    log_thread = threading.Thread(target=log_worker, daemon=True)
+    log_thread.start()
+    time.sleep(0.1)  # 确保日志线程启动
     
-    # 1. 初始化音频
-    init_audio()
+    log_print(f">>> WebSocket服务器: {SERVER_HOST}:{WEBSOCKET_PORT}")
     
-    # 2. 启动服务器
-    server_th = threading.Thread(target=server_thread, daemon=True)
-    server_th.start()
+    # 1. 启动WebSocket服务器
+    ws_server_th = threading.Thread(target=websocket_server_thread, daemon=True)
+    ws_server_th.start()
+    time.sleep(0.5)  # 等待服务器启动
     
-    # 3. 初始化串口
+    # 2. 初始化串口
     ser = init_serial()
-    if not ser:
-        print("串口初始化失败，退出")
-        sys.exit(1)
+    if ser:
+        serial_th = threading.Thread(target=serial_read_thread, daemon=True)
+        serial_th.start()
+        log_print(f">>> 雷达已连接: {SERIAL_PORT}")
+    else:
+        log_print(">>> 雷达未连接 (测试模式)")
+        log_print("使用 'test' 命令手动触发测试")
     
-    # 4. 启动串口读取
-    serial_th = threading.Thread(target=serial_read_thread, daemon=True)
-    serial_th.start()
+    log_print(">>> 系统已就绪")
+    log_print("命令: test | status | clients | history | quit")
     
-    # 5. 启动可视化
+    # 3. 在新线程中启动命令处理
+    cmd_thread = threading.Thread(target=handle_commands, daemon=True)
+    cmd_thread.start()
+    
+    # 4. 在主线程中启动可视化
     try:
-        init_radar_visualization()
+        # 设置窗口关闭事件
+        def on_close(event):
+            log_print("窗口已关闭，正在退出...")
+            should_exit.set()
+            plt.close('all')
+        
+        fig = init_radar_visualization()
+        fig.canvas.mpl_connect('close_event', on_close)
+        
+        # 显示窗口
+        plt.show()
+        
     except KeyboardInterrupt:
-        print("\n用户退出")
+        log_print("\n收到中断信号，正在退出...")
     except Exception as e:
-        print(f"\n错误：{str(e)}")
+        log_print(f"可视化错误: {e}")
     finally:
+        should_exit.set()
+        
+        # 关闭串口
         if ser and ser.is_open:
             try:
                 ser.close()
-                print("串口已关闭")
             except:
                 pass
         
-        try:
-            stop_alarm_sound()
-            pygame.mixer.quit()
-        except:
-            pass
-        
-        print("系统已停止")
+        # 等待线程结束
+        time.sleep(0.5)
+        log_print(">>> 程序已退出")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

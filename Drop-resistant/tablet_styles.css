@@ -1,0 +1,667 @@
+/* 全局样式 */
+:root {
+    /* Fluent Design 颜色系统 */
+    --bg-primary: #f3f3f3;
+    --bg-secondary: rgba(255, 255, 255, 0.7);
+    --bg-tertiary: rgba(255, 255, 255, 0.5);
+    --text-primary: #1f1f1f;
+    --text-secondary: #666666;
+    --text-tertiary: #999999;
+    --accent: #0078d4;
+    --accent-hover: #106ebe;
+    --success: #2e7d32;
+    --success-hover: #1b5e20;
+    --danger: #d32f2f;
+    --danger-hover: #b71c1c;
+    --border-color: rgba(0, 0, 0, 0.1);
+    
+    /* 阴影 */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.15);
+    --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.2);
+    
+    /* 圆角 */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-full: 9999px;
+    
+    /* 模糊 */
+    --blur-sm: 8px;
+    --blur-md: 16px;
+    --blur-lg: 24px;
+    
+    /* 过渡 */
+    --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-spring: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* 基础重置 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    font-size: 16px;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+    font-family: inherit;
+    border: none;
+    background: none;
+    cursor: pointer;
+    outline: none;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* 主容器 */
+#tablet-app {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+/* ==================== 桌面 ==================== */
+.desktop {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    padding-bottom: 100px; /* 为 Dock 留出空间 */
+}
+
+.desktop-wallpaper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: 0;
+}
+
+.desktop-icons {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 120px);
+    gap: 32px;
+    padding: 48px;
+    justify-content: center;
+    align-content: start;
+}
+
+.desktop-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.desktop-icon:hover {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(var(--blur-sm));
+    transform: translateY(-4px);
+}
+
+.desktop-icon:active {
+    transform: translateY(-2px) scale(0.98);
+}
+
+.icon-image {
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(var(--blur-md));
+    border-radius: var(--radius-lg);
+    color: white;
+    box-shadow: var(--shadow-md);
+}
+
+.icon-image svg {
+    width: 40px;
+    height: 40px;
+}
+
+.icon-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: white;
+    text-align: center;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ==================== 全屏应用容器 ==================== */
+.app-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-primary);
+    z-index: 100;
+    animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.app-window {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-primary);
+}
+
+.app-header {
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    background: var(--bg-secondary);
+    backdrop-filter: blur(var(--blur-md));
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.app-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.app-close {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    transition: all var(--transition-fast);
+}
+
+.app-close:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--text-primary);
+}
+
+.app-close svg {
+    width: 24px;
+    height: 24px;
+}
+
+.app-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px;
+}
+
+/* ==================== 来电界面 ==================== */
+.call-screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 200;
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.call-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e22ce 100%);
+    z-index: 0;
+}
+
+.call-content {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 64px 48px 120px;
+}
+
+.call-header {
+    text-align: center;
+}
+
+.caller-name {
+    font-size: 42px;
+    font-weight: 700;
+    color: white;
+    text-align: center;
+    text-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    margin-bottom: 12px;
+}
+
+.call-status {
+    font-size: 18px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.call-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+}
+
+.caller-avatar {
+    width: 160px;
+    height: 160px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(var(--blur-lg));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-xl);
+    position: relative;
+    animation: avatarPulse 2s ease-in-out infinite;
+}
+
+/* 头像脉冲动画 */
+@keyframes avatarPulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+/* 头像外围波纹效果 */
+.caller-avatar::before,
+.caller-avatar::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius-full);
+    border: 2px solid rgba(255, 255, 255, 0.6);
+    animation: ripple 2s ease-out infinite;
+}
+
+.caller-avatar::after {
+    animation-delay: 1s;
+}
+
+@keyframes ripple {
+    0% {
+        width: 100%;
+        height: 100%;
+        opacity: 1;
+    }
+    100% {
+        width: 200%;
+        height: 200%;
+        opacity: 0;
+    }
+}
+
+/* 接听后停止动画 */
+.caller-avatar.answered {
+    animation: none;
+}
+
+.caller-avatar.answered::before,
+.caller-avatar.answered::after {
+    animation: none;
+    opacity: 0;
+}
+
+@keyframes ripple {
+    0% {
+        width: 100%;
+        height: 100%;
+        opacity: 1;
+    }
+    100% {
+        width: 200%;
+        height: 200%;
+        opacity: 0;
+    }
+}
+
+.caller-avatar svg {
+    width: 100px;
+    height: 100px;
+    position: relative;
+    z-index: 1;
+}
+
+.caller-subtitle {
+    font-size: 24px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.85);
+    text-align: center;
+    display: none; /* 隐藏，不再使用 */
+}
+
+.call-duration {
+    font-size: 24px;
+    font-weight: 600;
+    color: white;
+    padding: 12px 32px;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(var(--blur-md));
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-lg);
+}
+
+.call-actions {
+    display: flex;
+    gap: 48px;
+    align-items: center;
+}
+
+.call-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 0;
+    transition: all var(--transition-normal);
+}
+
+.call-btn svg {
+    width: 80px;
+    height: 80px;
+    padding: 20px;
+    border-radius: var(--radius-full);
+    transition: all var(--transition-normal);
+}
+
+.call-btn span {
+    font-size: 18px;
+    font-weight: 600;
+    color: white;
+}
+
+.call-btn-reject svg {
+    background: var(--danger);
+    color: white;
+    box-shadow: 0 8px 24px rgba(211, 47, 47, 0.4);
+}
+
+.call-btn-reject:hover svg {
+    background: var(--danger-hover);
+    transform: scale(1.1);
+    box-shadow: 0 12px 32px rgba(211, 47, 47, 0.5);
+}
+
+.call-btn-reject:active svg {
+    transform: scale(1.05);
+}
+
+.call-btn-answer svg {
+    background: var(--success);
+    color: white;
+    box-shadow: 0 8px 24px rgba(46, 125, 50, 0.4);
+}
+
+.call-btn-answer:hover svg {
+    background: var(--success-hover);
+    transform: scale(1.1);
+    box-shadow: 0 12px 32px rgba(46, 125, 50, 0.5);
+}
+
+.call-btn-answer:active svg {
+    transform: scale(1.05);
+}
+
+.call-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.call-btn:disabled svg {
+    transform: none !important;
+}
+
+/* ==================== Dock 栏 ==================== */
+.dock {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100px;
+    z-index: 150;
+    pointer-events: none;
+}
+
+.dock-container {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 12px 24px;
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(var(--blur-lg));
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
+    pointer-events: auto;
+}
+
+.dock-apps {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dock-app {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
+    transition: all var(--transition-normal);
+}
+
+.dock-app:hover {
+    background: rgba(0, 0, 0, 0.05);
+    transform: translateY(-8px) scale(1.1);
+}
+
+.dock-app:active {
+    transform: translateY(-4px) scale(1.05);
+}
+
+.dock-app svg {
+    width: 32px;
+    height: 32px;
+}
+
+.dock-app.active {
+    background: rgba(0, 120, 212, 0.1);
+    color: var(--accent);
+}
+
+.dock-indicator {
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.dock-app.active .dock-indicator {
+    opacity: 1;
+}
+
+.dock-divider {
+    width: 1px;
+    height: 48px;
+    background: var(--border-color);
+    margin: 0 8px;
+}
+
+.dock-status {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-left: 16px;
+    border-left: 1px solid var(--border-color);
+}
+
+.status-time {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.status-icons {
+    display: flex;
+    gap: 8px;
+}
+
+.status-icon {
+    width: 24px;
+    height: 24px;
+    color: var(--text-secondary);
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width: 768px) {
+    .desktop-icons {
+        grid-template-columns: repeat(auto-fill, 100px);
+        gap: 24px;
+        padding: 32px;
+    }
+    
+    .icon-image {
+        width: 60px;
+        height: 60px;
+    }
+    
+    .icon-image svg {
+        width: 32px;
+        height: 32px;
+    }
+    
+    .caller-name {
+        font-size: 36px;
+    }
+    
+    .caller-subtitle {
+        font-size: 22px;
+    }
+    
+    .call-actions {
+        gap: 32px;
+    }
+    
+    .call-btn svg {
+        width: 64px;
+        height: 64px;
+        padding: 16px;
+    }
+    
+    .dock-container {
+        gap: 16px;
+        padding: 8px 16px;
+    }
+    
+    .dock-app {
+        width: 56px;
+        height: 56px;
+    }
+    
+    .dock-app svg {
+        width: 28px;
+        height: 28px;
+    }
+}
+
+/* ==================== 滚动条样式 ==================== */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+}
