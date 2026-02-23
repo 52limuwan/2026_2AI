@@ -192,6 +192,11 @@
                 <div class="dock-status">
                     <div class="status-time" id="status-time">12:00</div>
                     <div class="status-icons">
+                        <button class="status-icon fullscreen-btn" id="fullscreen-btn" title="全屏">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
                         <svg class="status-icon" viewBox="0 0 24 24" fill="none">
                             <path d="M1 9l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                             <path d="M12 5c3.9 0 7 3.1 7 7s-3.1 7-7 7-7-3.1-7-7" stroke="currentColor" stroke-width="2"/>
@@ -205,6 +210,11 @@
     <!-- 隐藏的音频元素 -->
     <audio id="alarm-audio" style="display: none;">
         <source src="aviation-alarm.mp3" type="audio/mpeg">
+    </audio>
+    
+    <!-- 来电铃声 -->
+    <audio id="ringtone-audio" style="display: none;">
+        <source src="laidian.mp3" type="audio/mpeg">
     </audio>
 
     <script src="tablet_app.js"></script>

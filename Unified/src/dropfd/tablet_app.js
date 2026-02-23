@@ -44,7 +44,14 @@ class TabletOS {
                 this.showTestCall();
             } else if (e.key === 'Escape') {
                 this.rejectCall();
+            } else if (e.key === 'f' || e.key === 'F') {
+                this.toggleFullscreen();
             }
+        });
+        
+        // 监听全屏状态变化
+        document.addEventListener('fullscreenchange', () => {
+            this.updateFullscreenButton();
         });
     }
     
@@ -73,6 +80,14 @@ class TabletOS {
         document.getElementById('btn-reject').addEventListener('click', () => {
             this.rejectCall();
         });
+        
+        // 全屏按钮
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        if (fullscreenBtn) {
+            fullscreenBtn.addEventListener('click', () => {
+                this.toggleFullscreen();
+            });
+        }
     }
     
     updateTime() {
@@ -476,6 +491,9 @@ class TabletOS {
             this.closeApp();
         }
         
+        // 播放来电铃声
+        this.playRingtone();
+        
         console.log('收到来电，等待用户接听...');
     }
     
@@ -485,6 +503,9 @@ class TabletOS {
         console.log('用户接听电话');
         this.isCallActive = true;
         this.callStartTime = Date.now();
+        
+        // 停止来电铃声
+        this.stopRingtone();
         
         // 更新UI
         const callStatusText = document.getElementById('call-status-text');
@@ -628,6 +649,9 @@ class TabletOS {
     rejectCall() {
         console.log('挂断电话');
         
+        // 停止来电铃声
+        this.stopRingtone();
+        
         // 停止所有音频
         this.stopAllAudio();
         
@@ -659,6 +683,30 @@ class TabletOS {
         document.getElementById('call-duration').textContent = durationText;
     }
     
+    playRingtone() {
+        // 播放来电铃声
+        const ringtoneAudio = document.getElementById('ringtone-audio');
+        if (ringtoneAudio) {
+            ringtoneAudio.loop = true; // 循环播放
+            ringtoneAudio.play().then(() => {
+                console.log('✓ 来电铃声播放中');
+            }).catch(err => {
+                console.error('✗ 来电铃声播放失败:', err);
+            });
+        }
+    }
+    
+    stopRingtone() {
+        // 停止来电铃声
+        const ringtoneAudio = document.getElementById('ringtone-audio');
+        if (ringtoneAudio) {
+            ringtoneAudio.pause();
+            ringtoneAudio.currentTime = 0;
+            ringtoneAudio.loop = false;
+            console.log('✓ 来电铃声已停止');
+        }
+    }
+    
     stopAllAudio() {
         // 停止警报音
         const alarmAudio = document.getElementById('alarm-audio');
@@ -682,6 +730,44 @@ class TabletOS {
         };
         
         this.showCall(testData);
+    }
+    
+    // ==================== 全屏功能 ====================
+    
+    toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            // 进入全屏
+            document.documentElement.requestFullscreen().then(() => {
+                console.log('✓ 已进入全屏模式');
+            }).catch(err => {
+                console.error('✗ 进入全屏失败:', err);
+            });
+        } else {
+            // 退出全屏
+            document.exitFullscreen().then(() => {
+                console.log('✓ 已退出全屏模式');
+            }).catch(err => {
+                console.error('✗ 退出全屏失败:', err);
+            });
+        }
+    }
+    
+    updateFullscreenButton() {
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        if (!fullscreenBtn) return;
+        
+        const svg = fullscreenBtn.querySelector('svg');
+        if (!svg) return;
+        
+        if (document.fullscreenElement) {
+            // 全屏状态 - 显示退出全屏图标
+            svg.innerHTML = '<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+            fullscreenBtn.title = '退出全屏';
+        } else {
+            // 非全屏状态 - 显示进入全屏图标
+            svg.innerHTML = '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+            fullscreenBtn.title = '全屏';
+        }
     }
     
     // ==================== 网络连接 ====================
