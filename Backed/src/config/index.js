@@ -21,7 +21,7 @@ if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
 const config = {
   // 服务器配置
   server: {
-    port: parseInt(process.env.PORT || '8000', 10),
+    port: parseInt(process.env.PORT || '3000', 10),
     env: process.env.NODE_ENV || 'development',
     isDevelopment: process.env.NODE_ENV !== 'production',
     isProduction: process.env.NODE_ENV === 'production'
