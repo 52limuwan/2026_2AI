@@ -18,21 +18,14 @@ from datetime import datetime
 
 # Windows平台特殊处理
 if sys.platform == 'win32':
-    # 设置事件循环策略，避免关闭时的警告
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # 配置日志系统
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
-
-# 禁用websockets库的日志
 logging.getLogger('websockets').setLevel(logging.CRITICAL)
 logging.getLogger('websockets.server').setLevel(logging.CRITICAL)
 
-# 自定义日志函数，支持结构化输出
 def log_info(module, action, message, **kwargs):
     """结构化日志输出"""
     parts = [message]
@@ -52,11 +45,17 @@ latest_data = {
     'alert': None
 }
 data_lock = threading.Lock()
-shutdown_event = threading.Event()  # 用于优雅关闭
+shutdown_event = threading.Event()
 
 # 滑动窗口用于降噪
 hr_window = deque(maxlen=5)
 br_window = deque(maxlen=5)
+
+# 模拟模式控制
+simulation_mode = None
+simulation_lock = threading.Lock()
+breath_holding_start_time = None
+normal_heart_rate = 75
 
 def list_ports():
     """列出所有可用串口"""
@@ -69,19 +68,17 @@ def read_serial_data(port, baudrate=921600):
     
     try:
         ser = serial.Serial(port, baudrate, timeout=1)
-        
         buffer = bytearray()
         frame_size = 32
         frame_count = 0
-        last_process_time = time.time()  # 记录上次处理帧的时间
+        last_process_time = time.time()
         
         while not shutdown_event.is_set():
             if ser.in_waiting > 0:
                 data = ser.read(ser.in_waiting)
                 buffer.extend(data)
             
-            while True:
-                # 查找帧头
+            while len(buffer) >= frame_size:
                 start = buffer.find(b'\xa8\xa8\xa8\xa8')
                 
                 if start == -1:
@@ -96,7 +93,6 @@ def read_serial_data(port, baudrate=921600):
                 
                 frame = buffer[0:frame_size]
                 
-                # 检查帧尾
                 if frame[28:32] == b'\xb6\xb6\xb6\xb6':
                     payload = frame[4:28]
                     Bwave = struct.unpack('<f', payload[0:4])[0]
@@ -107,18 +103,14 @@ def read_serial_data(port, baudrate=921600):
                     
                     frame_count += 1
                     
-                    # 异常值过滤
                     if 30 <= HR_raw <= 200:
                         hr_window.append(HR_raw)
-                        
                     if 0 <= BR_raw <= 200:
                         br_window.append(BR_raw)
                     
-                    # 滑动平均降噪
                     HR = sum(hr_window) / len(hr_window) if hr_window else HR_raw
                     BR = sum(br_window) / len(br_window) if br_window else BR_raw
                     
-                    # 判断生命体征
                     status = 'no_sign'
                     alert = None
                     status_text = "未检测到生命体征"
@@ -131,7 +123,6 @@ def read_serial_data(port, baudrate=921600):
                         status = 'detected'
                         status_text = "检测到生命体征"
                     
-                    # 检查警报
                     if BR >= 100:
                         alert = '呼吸异常！呼吸率过高'
                     elif BR > 35 and BR < 100:
@@ -139,19 +130,19 @@ def read_serial_data(port, baudrate=921600):
                     elif BR > 0 and BR < 10:
                         alert = '呼吸偏慢'
                     
-                    # 每0.2秒处理一次帧（5帧/秒）
                     current_time = time.time()
                     if current_time - last_process_time >= 0.2:
-                        # 输出日志
-                        log_info("data", "frame", "数据帧", 
-                                帧号=f"#{frame_count}", 
-                                生命体征=status_text,
-                                心率=f"{HR:.1f}",
-                                呼吸=f"{BR:.1f}",
-                                距离=f"{distance:.2f}m",
-                                警报=alert if alert else "正常")
+                        # 只在非模拟模式下输出串口数据日志
+                        with simulation_lock:
+                            if simulation_mode is None:
+                                log_info("data", "frame", "数据帧", 
+                                        帧号=f"#{frame_count}", 
+                                        生命体征=status_text,
+                                        心率=f"{HR:.1f}",
+                                        呼吸=f"{BR:.1f}",
+                                        距离=f"{distance:.2f}m",
+                                        警报=alert if alert else "正常")
                         
-                        # 更新全局数据
                         with data_lock:
                             latest_data = {
                                 'heartRate': round(HR, 1),
@@ -169,7 +160,7 @@ def read_serial_data(port, baudrate=921600):
                 else:
                     buffer = buffer[4:]
             
-            time.sleep(0.01)  # 短暂休眠，避免CPU占用过高
+            time.sleep(0.01)
     
     except Exception as e:
         if not shutdown_event.is_set():
@@ -183,14 +174,112 @@ async def handle_client(websocket):
     client_addr = websocket.remote_address
     connected_clients.add(websocket)
     
+    # 用于控制模拟数据的日志输出频率
+    last_sim_log_time = 0
+    
     try:
-        # 持续发送数据给客户端
         while not shutdown_event.is_set():
-            with data_lock:
-                data = latest_data.copy()
+            with simulation_lock:
+                current_sim_mode = simulation_mode
+            
+            if current_sim_mode is not None:
+                import random
+                
+                # 用于控制模拟数据的日志输出频率
+                current_time = time.time()
+                should_log = (current_time - last_sim_log_time) >= 1.0  # 改为1秒输出一次
+                
+                if current_sim_mode == 'breath_holding':
+                    global breath_holding_start_time
+                    if breath_holding_start_time is None:
+                        breath_holding_start_time = time.time()
+                    
+                    holding_duration = time.time() - breath_holding_start_time
+                    
+                    # 呼吸率从25逐渐降到0（2秒内）
+                    if holding_duration < 2:
+                        BR = 25 * (1 - holding_duration / 2)
+                    else:
+                        BR = 0
+                    
+                    # 心率从75逐渐升高到100+（2秒内）
+                    if holding_duration < 2:
+                        HR = 75 + (holding_duration / 2) * 30  # 75 -> 105
+                    else:
+                        HR = 105 + random.uniform(-5, 5)
+                    
+                    HR = max(70, min(110, HR))
+                    
+                    data = {
+                        'heartRate': round(HR, 1),
+                        'breathingRate': round(BR, 1),
+                        'distance': round(random.uniform(0.5, 1.5), 2),
+                        'bWave': 0.0001 if BR > 0 else 0,
+                        'hWave': round(random.uniform(0.001, 0.01), 4),
+                        'status': 'detected',
+                        'alert': f'呼吸暂停！已持续 {int(holding_duration)} 秒'
+                    }
+                    
+                    if should_log:
+                        log_info("simulation", "breath_holding", "数据帧",
+                                生命体征="检测到生命体征",
+                                心率=f"{HR:.1f}",
+                                呼吸=f"{BR:.1f}",
+                                距离=f"{data['distance']:.2f}m",
+                                警报="呼吸异常")
+                        last_sim_log_time = current_time
+                
+                elif current_sim_mode == 'abnormal_breathing':
+                    HR = random.uniform(70, 90)
+                    BR = random.uniform(100, 150)
+                    
+                    data = {
+                        'heartRate': round(HR, 1),
+                        'breathingRate': round(BR, 1),
+                        'distance': round(random.uniform(0.5, 1.5), 2),
+                        'bWave': round(random.uniform(0.001, 0.01), 4),
+                        'hWave': round(random.uniform(0.001, 0.01), 4),
+                        'status': 'detected',
+                        'alert': '呼吸异常！呼吸率过高'
+                    }
+                    
+                    if should_log:
+                        log_info("simulation", "abnormal_breathing", "数据帧",
+                                生命体征="检测到生命体征",
+                                心率=f"{HR:.1f}",
+                                呼吸=f"{BR:.1f}",
+                                距离=f"{data['distance']:.2f}m",
+                                警报="呼吸异常-呼吸率过高")
+                        last_sim_log_time = current_time
+                
+                elif current_sim_mode == 'no_sign':
+                    data = {
+                        'heartRate': 0,
+                        'breathingRate': 0,
+                        'distance': 0,
+                        'bWave': 0,
+                        'hWave': 0,
+                        'status': 'no_sign',
+                        'alert': None
+                    }
+                    
+                    if should_log:
+                        log_info("simulation", "no_sign", "数据帧",
+                                生命体征="未检测到生命体征",
+                                心率="0.0",
+                                呼吸="0.0",
+                                距离="0.00m",
+                                警报="无生命体征")
+                        last_sim_log_time = current_time
+            else:
+                if breath_holding_start_time is not None:
+                    breath_holding_start_time = None
+                
+                with data_lock:
+                    data = latest_data.copy()
             
             await websocket.send(json.dumps(data))
-            await asyncio.sleep(0.2)  # 5帧/秒
+            await asyncio.sleep(1.0)  # 改为1秒发送一次
     
     except websockets.exceptions.ConnectionClosed:
         pass
@@ -204,7 +293,9 @@ async def start_server():
     server = await websockets.serve(handle_client, "0.0.0.0", 8765)
     
     try:
-        await asyncio.Future()  # 永久运行
+        # 定期检查 shutdown_event
+        while not shutdown_event.is_set():
+            await asyncio.sleep(0.5)
     except asyncio.CancelledError:
         pass
     finally:
@@ -215,10 +306,8 @@ def startup_animation():
     """启动自检流程"""
     print()
     
-    # 1. 系统初始化
     print(f"[·] 系统初始化", end="", flush=True)
     time.sleep(0.2)
-    # 清理全局状态
     global latest_data, connected_clients, hr_window, br_window
     connected_clients.clear()
     hr_window.clear()
@@ -235,10 +324,8 @@ def startup_animation():
     time.sleep(0.1)
     print(f"\r[✓] 系统初始化")
     
-    # 2. 加载配置文件
     print(f"[·] 加载配置文件", end="", flush=True)
     time.sleep(0.1)
-    # 检查环境变量和配置
     config = {
         'ws_host': '0.0.0.0',
         'ws_port': 8765,
@@ -248,7 +335,6 @@ def startup_animation():
     time.sleep(0.1)
     print(f"\r[✓] 加载配置文件")
     
-    # 3. 检查依赖库
     print(f"[·] 检查依赖库", end="", flush=True)
     time.sleep(0.1)
     try:
@@ -261,10 +347,8 @@ def startup_animation():
         print(f"\r[✗] 检查依赖库 - 缺少: {e.name}")
         return False
     
-    # 4. 初始化WebSocket
     print(f"[·] 初始化WebSocket", end="", flush=True)
     time.sleep(0.2)
-    # 验证端口可用性
     import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -276,7 +360,6 @@ def startup_animation():
         print(f"\r[✗] 初始化WebSocket - 端口 {config['ws_port']} 已被占用")
         return False
     
-    # 5. 扫描硬件设备
     print(f"[·] 扫描硬件设备", end="", flush=True)
     time.sleep(0.2)
     ports = list_ports()
@@ -287,7 +370,6 @@ def startup_animation():
         print(f"\r[✗] 扫描硬件设备 - 未发现串口")
         return False
     
-    # 6. 建立串口连接
     print(f"[·] 建立串口连接", end="", flush=True)
     time.sleep(0.2)
     try:
@@ -299,20 +381,16 @@ def startup_animation():
         print(f"\r[✗] 建立串口连接 - {str(e)}")
         return False
     
-    # 7. 校准传感器
     print(f"[·] 校准传感器", end="", flush=True)
     time.sleep(0.3)
-    # 预热滑动窗口
     for _ in range(5):
         hr_window.append(0)
         br_window.append(0)
     time.sleep(0.1)
     print(f"\r[✓] 校准传感器")
     
-    # 8. 启动数据流
     print(f"[·] 启动数据流", end="", flush=True)
     time.sleep(0.2)
-    # 验证数据结构
     assert 'heartRate' in latest_data
     assert 'breathingRate' in latest_data
     time.sleep(0.1)
@@ -322,30 +400,98 @@ def startup_animation():
     time.sleep(0.2)
     return True
 
+def command_input_thread():
+    """命令行输入线程"""
+    global simulation_mode, breath_holding_start_time
+    
+    import sys
+    import select
+    
+    # Windows 下使用 msvcrt，Unix 下使用 select
+    if sys.platform == 'win32':
+        import msvcrt
+        
+        while not shutdown_event.is_set():
+            try:
+                if msvcrt.kbhit():
+                    char = msvcrt.getch().decode('utf-8', errors='ignore').lower()
+                    
+                    if char == '1':
+                        with simulation_lock:
+                            simulation_mode = 'breath_holding'
+                            breath_holding_start_time = time.time()
+                    
+                    elif char == '2':
+                        with simulation_lock:
+                            simulation_mode = 'no_sign'
+                            breath_holding_start_time = None
+                    
+                    elif char == '3':
+                        with simulation_lock:
+                            simulation_mode = 'abnormal_breathing'
+                            breath_holding_start_time = None
+                    
+                    elif char == '0':
+                        with simulation_lock:
+                            simulation_mode = None
+                            breath_holding_start_time = None
+                
+                time.sleep(0.1)
+            
+            except Exception as e:
+                if not shutdown_event.is_set():
+                    pass
+    else:
+        # Unix/Linux 系统
+        while not shutdown_event.is_set():
+            try:
+                if select.select([sys.stdin], [], [], 0.1)[0]:
+                    char = sys.stdin.read(1).lower()
+                    
+                    if char == '1':
+                        with simulation_lock:
+                            simulation_mode = 'breath_holding'
+                            breath_holding_start_time = time.time()
+                    
+                    elif char == '2':
+                        with simulation_lock:
+                            simulation_mode = 'no_sign'
+                            breath_holding_start_time = None
+                    
+                    elif char == '3':
+                        with simulation_lock:
+                            simulation_mode = 'abnormal_breathing'
+                            breath_holding_start_time = None
+                    
+                    elif char == '0':
+                        with simulation_lock:
+                            simulation_mode = None
+                            breath_holding_start_time = None
+            
+            except Exception as e:
+                if not shutdown_event.is_set():
+                    pass
+
 def main():
     """主函数"""
-    # 启动自检流程
     if not startup_animation():
         print("\n自检失败，服务无法启动")
         return
     
-    # 查找串口
     ports = list_ports()
-    
-    serial_thread = None
     
     if not ports:
         logger.warning("未找到串口设备")
         return
-    else:
-        port = ports[0]
-        
-        # 启动串口读取线程
-        serial_thread = threading.Thread(target=read_serial_data, args=(port,), daemon=True)
-        serial_thread.start()
-        time.sleep(0.5)  # 等待串口初始化
     
-    # 启动WebSocket服务器
+    port = ports[0]
+    serial_thread = threading.Thread(target=read_serial_data, args=(port,), daemon=True)
+    serial_thread.start()
+    time.sleep(0.5)
+    
+    cmd_thread = threading.Thread(target=command_input_thread, daemon=True)
+    cmd_thread.start()
+    
     try:
         asyncio.run(start_server())
     except KeyboardInterrupt:
@@ -354,7 +500,6 @@ def main():
         print("\n正在关闭服务...", flush=True)
         shutdown_event.set()
         
-        # 关闭所有WebSocket连接
         for client in list(connected_clients):
             try:
                 asyncio.run(client.close())

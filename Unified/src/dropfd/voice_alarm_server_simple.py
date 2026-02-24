@@ -313,7 +313,7 @@ def init_radar_visualization():
     global current_radar_data, trajectory_history
     
     fig, ax = plt.subplots(figsize=(10, 8))
-    fig.canvas.manager.set_window_title('防跌倒检测服务端（简化版 - 无TTS）')
+    fig.canvas.manager.set_window_title('防跌倒检测服务端')
     
     ax.set_xlim(-7, 7)
     ax.set_ylim(0, 7)

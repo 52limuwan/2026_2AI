@@ -9,6 +9,9 @@ class TabletOS {
         this.callStartTime = null;
         this.callDurationInterval = null;
         this.socket = null;
+        this.audioUnlocked = false;
+        this.ringtoneAudio = null;
+        this.alarmAudio = null;
         
         // 从localStorage读取服务器配置，默认为localhost
         this.serverHost = localStorage.getItem('serverHost') || 'localhost';
@@ -31,6 +34,7 @@ class TabletOS {
     
     init() {
         this.setRandomWallpaper();
+        this.initAudio();
         this.setupEventListeners();
         this.updateTime();
         this.connectToServer();
@@ -53,6 +57,68 @@ class TabletOS {
         document.addEventListener('fullscreenchange', () => {
             this.updateFullscreenButton();
         });
+        
+        // 解锁音频（通过用户交互）
+        this.unlockAudio();
+    }
+    
+    initAudio() {
+        // 初始化音频元素
+        this.ringtoneAudio = document.getElementById('ringtone-audio');
+        this.alarmAudio = document.getElementById('alarm-audio');
+        
+        if (this.ringtoneAudio) {
+            this.ringtoneAudio.preload = 'auto';
+            this.ringtoneAudio.load();
+        }
+        
+        if (this.alarmAudio) {
+            this.alarmAudio.preload = 'auto';
+            this.alarmAudio.load();
+        }
+        
+        console.log('✓ 音频元素已初始化');
+    }
+    
+    unlockAudio() {
+        // 通过用户交互解锁音频播放
+        const unlockHandler = () => {
+            if (this.audioUnlocked) return;
+            
+            // 尝试播放并立即暂停来解锁音频
+            const promises = [];
+            
+            if (this.ringtoneAudio) {
+                const p1 = this.ringtoneAudio.play().then(() => {
+                    this.ringtoneAudio.pause();
+                    this.ringtoneAudio.currentTime = 0;
+                }).catch(() => {});
+                promises.push(p1);
+            }
+            
+            if (this.alarmAudio) {
+                const p2 = this.alarmAudio.play().then(() => {
+                    this.alarmAudio.pause();
+                    this.alarmAudio.currentTime = 0;
+                }).catch(() => {});
+                promises.push(p2);
+            }
+            
+            Promise.all(promises).then(() => {
+                this.audioUnlocked = true;
+                console.log('✓ 音频已解锁');
+                
+                // 移除事件监听
+                document.removeEventListener('click', unlockHandler);
+                document.removeEventListener('touchstart', unlockHandler);
+                document.removeEventListener('keydown', unlockHandler);
+            });
+        };
+        
+        // 监听多种用户交互事件
+        document.addEventListener('click', unlockHandler, { once: true });
+        document.addEventListener('touchstart', unlockHandler, { once: true });
+        document.addEventListener('keydown', unlockHandler, { once: true });
     }
     
     setupEventListeners() {
@@ -580,35 +646,46 @@ class TabletOS {
     }
     
     playAlarmSound(duration) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             if (!this.isCallActive) {
                 resolve();
                 return;
             }
             
-            const alarmAudio = document.getElementById('alarm-audio');
-            if (!alarmAudio) {
+            if (!this.alarmAudio) {
                 console.warn('未找到警报音频元素');
                 resolve();
                 return;
             }
             
+            // 重置音频状态
+            this.alarmAudio.pause();
+            this.alarmAudio.currentTime = 0;
+            
             // 播放警报音
-            alarmAudio.play().then(() => {
-                console.log('✓ 警报音播放中');
-                
-                // 设置定时器，duration毫秒后停止
-                setTimeout(() => {
-                    alarmAudio.pause();
-                    alarmAudio.currentTime = 0;
-                    console.log('✓ 警报音播放完成');
-                    resolve();
-                }, duration);
-                
-            }).catch(err => {
-                console.error('✗ 警报音播放失败:', err);
-                resolve(); // 即使失败也继续
-            });
+            const playPromise = this.alarmAudio.play();
+            
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    console.log('✓ 警报音播放中');
+                    
+                    // 设置定时器，duration毫秒后停止
+                    setTimeout(() => {
+                        if (this.alarmAudio) {
+                            this.alarmAudio.pause();
+                            this.alarmAudio.currentTime = 0;
+                        }
+                        console.log('✓ 警报音播放完成');
+                        resolve();
+                    }, duration);
+                    
+                }).catch(err => {
+                    console.error('✗ 警报音播放失败:', err);
+                    resolve(); // 即使失败也继续
+                });
+            } else {
+                resolve();
+            }
         });
     }
     
@@ -685,39 +762,66 @@ class TabletOS {
     
     playRingtone() {
         // 播放来电铃声
-        const ringtoneAudio = document.getElementById('ringtone-audio');
-        if (ringtoneAudio) {
-            ringtoneAudio.loop = true; // 循环播放
-            ringtoneAudio.play().then(() => {
+        if (!this.ringtoneAudio) {
+            console.error('✗ 来电铃声音频元素未找到');
+            return;
+        }
+        
+        // 确保音频已重置
+        this.ringtoneAudio.pause();
+        this.ringtoneAudio.currentTime = 0;
+        this.ringtoneAudio.loop = true; // 循环播放
+        
+        // 播放音频
+        const playPromise = this.ringtoneAudio.play();
+        
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
                 console.log('✓ 来电铃声播放中');
             }).catch(err => {
                 console.error('✗ 来电铃声播放失败:', err);
+                
+                // 如果音频未解锁，尝试再次解锁
+                if (!this.audioUnlocked) {
+                    console.log('尝试解锁音频...');
+                    this.unlockAudio();
+                }
             });
         }
     }
     
     stopRingtone() {
         // 停止来电铃声
-        const ringtoneAudio = document.getElementById('ringtone-audio');
-        if (ringtoneAudio) {
-            ringtoneAudio.pause();
-            ringtoneAudio.currentTime = 0;
-            ringtoneAudio.loop = false;
+        if (!this.ringtoneAudio) return;
+        
+        try {
+            this.ringtoneAudio.pause();
+            this.ringtoneAudio.currentTime = 0;
+            this.ringtoneAudio.loop = false;
             console.log('✓ 来电铃声已停止');
+        } catch (err) {
+            console.error('✗ 停止铃声失败:', err);
         }
     }
     
     stopAllAudio() {
         // 停止警报音
-        const alarmAudio = document.getElementById('alarm-audio');
-        if (alarmAudio) {
-            alarmAudio.pause();
-            alarmAudio.currentTime = 0;
+        if (this.alarmAudio) {
+            try {
+                this.alarmAudio.pause();
+                this.alarmAudio.currentTime = 0;
+            } catch (err) {
+                console.error('停止警报音失败:', err);
+            }
         }
         
         // 停止 Web Speech TTS
         if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
+            try {
+                window.speechSynthesis.cancel();
+            } catch (err) {
+                console.error('停止TTS失败:', err);
+            }
         }
         
         console.log('✓ 已停止所有音频');
