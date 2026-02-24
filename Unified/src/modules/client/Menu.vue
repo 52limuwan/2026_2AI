@@ -514,8 +514,25 @@ const runSmartRecommend = async () => {
       return
     }
     
-    // 更新提示信息
-    message.value = `为您推荐了 ${recommendations.length} 道营养均衡的菜品`
+    // 更新提示信息 - 加上病症信息
+    const chronicConditions = userStore.profile?.chronic_conditions
+    let conditionText = ''
+    if (chronicConditions) {
+      try {
+        const conditions = typeof chronicConditions === 'string' 
+          ? JSON.parse(chronicConditions) 
+          : chronicConditions
+        if (Array.isArray(conditions) && conditions.length > 0) {
+          conditionText = `（针对${conditions.join('、')}）`
+        }
+      } catch (e) {
+        // 如果解析失败，尝试直接使用
+        if (typeof chronicConditions === 'string' && chronicConditions.trim()) {
+          conditionText = `（针对${chronicConditions}）`
+        }
+      }
+    }
+    message.value = `为您推荐了 ${recommendations.length} 道营养均衡的菜品${conditionText}`
     hasRecommended.value = true
     
     // 延迟300ms后开始逐个展示推荐菜品

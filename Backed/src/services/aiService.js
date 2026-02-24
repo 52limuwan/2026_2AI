@@ -996,43 +996,107 @@ module.exports = {
  * @param {Array} dishes - 可选菜品列表
  * @returns {Promise<Object>} - 返回推荐结果
  */
-async function generateSmartRecommendation(userData, dishes) {
+async function generateSmartRecommendation(userData, dishes, excludeDishIds = [], userSeed = 0) {
   console.log('\n========================================');
   console.log('[AI 智能推荐请求] CLIENT');
   console.log('========================================');
   console.log('请求时间:', new Date().toLocaleString('zh-CN'));
-  console.log(`用户ID: ${userData.clientId}`);
+  console.log(`用户ID: ${userData.clientId} (种子: ${userSeed})`);
   console.log(`可选菜品数: ${dishes.length}`);
-  
+  if (excludeDishIds.length > 0) {
+    console.log(`排除菜品: ${excludeDishIds.join(', ')}`);
+  }
+
   const apiKey = process.env.CLIENT_OPENAI_API_KEY;
   const baseUrl = process.env.CLIENT_OPENAI_API_URL || 'https://api.siliconflow.cn/v1';
   const apiUrl = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
   const model = process.env.CLIENT_OPENAI_MODEL || 'deepseek-ai/DeepSeek-V3';
-  
+
   console.log('配置信息:');
   console.log(`  - API URL: ${apiUrl}`);
   console.log(`  - Model: ${model}`);
   console.log(`  - API Key: ${apiKey ? apiKey.substring(0, 10) + '...' : '未配置'}`);
-  
+
   if (!apiKey || apiKey.includes('your_') || apiKey.includes('_here')) {
     throw new Error('请在 .env 文件中配置有效的 CLIENT_OPENAI_API_KEY');
   }
 
-  // 系统提示词
-  const systemPrompt = process.env.CLIENT_AI_RECOMMEND_SYSTEM_PROMPT || 
-    '你是一位专业的营养师，精通老年人营养需求和健康饮食搭配。你的任务是根据用户的健康状况和可选菜单，推荐3道最适合的菜品。';
+  // 系统提示词 - 强调多样性
+  const systemPrompt = process.env.CLIENT_AI_RECOMMEND_SYSTEM_PROMPT ||
+    `你是一位专业的营养师，精通老年人营养需求和健康饮食搭配。你的任务是根据用户的健康状况和可选菜单，推荐3道最适合的菜品。
+
+重要原则：
+1. 不同用户ID必须得到不同的推荐组合
+2. 即使健康状况相似，也要提供差异化的选择
+3. 不要总是推荐"最安全"的菜品，要在适合范围内提供多样性`;
+
+  // 根据用户种子对菜品进行分组排序，确保不同用户看到不同顺序
+  const seededDishes = [...dishes].sort((a, b) => {
+    const scoreA = (a.id * 31 + userSeed * 17) % 100;
+    const scoreB = (b.id * 31 + userSeed * 17) % 100;
+    return scoreB - scoreA;
+  });
+
+  // 过滤掉排除的菜品
+  let availableDishes = seededDishes.filter(d => !excludeDishIds.includes(d.id));
+  
+  // 【强制多样性】根据用户ID强制排除某些"过度安全"的菜品
+  const overusedDishes = [112, 125]; // 清蒸鲈鱼、香菇炒青菜
+  const userExclude = overusedDishes[userSeed % overusedDishes.length];
+  availableDishes = availableDishes.filter(d => d.id !== userExclude);
+
+  console.log(`可推荐菜品数: ${availableDishes.length}`);
+  console.log(`强制排除菜品ID: ${userExclude}`);
+  console.log(`菜品顺序(前5): ${availableDishes.slice(0, 5).map(d => `${d.id}:${d.name}`).join(', ')}`);
 
   // 构建菜单列表
-  const dishesMenu = dishes.map(d => 
+  const dishesMenu = availableDishes.map(d =>
     `ID:${d.id} ${d.name} ￥${d.price} - ${d.description || '无描述'} [热量:${d.nutrition?.calories || 0}kcal 蛋白质:${d.nutrition?.protein || 0}g]`
   ).join('\n');
 
   // 用户提示词模板
   const userPromptTemplate = process.env.CLIENT_AI_RECOMMEND_PROMPT ||
-    `请根据以下信息，从菜单中推荐3道最适合的菜品：\n\n用户健康信息：\n- 年龄：{age}岁\n- 性别：{gender}\n- 慢性病：{chronicConditions}\n- 口味偏好：{tastePreferences}\n\n近期营养摄入（过去7天平均）：\n- 每日热量：{avgCalories} kcal\n- 蛋白质：{avgProtein} g\n- 脂肪：{avgFat} g\n- 碳水：{avgCarbs} g\n\n可选菜单：\n{dishesMenu}\n\n请严格按照以下JSON格式返回（只返回JSON，不要其他文字）：\n{\n  "recommendations": [\n    {\n      "dish_id": 菜品ID,\n      "reason": "推荐理由（30字以内）"\n    }\n  ]\n}\n\n要求：\n1. 必须从可选菜单中选择3道菜品\n2. 考虑营养均衡（蛋白质、蔬菜、主食搭配）\n3. 考虑用户健康状况和慢性病\n4. 考虑用户口味偏好\n5. 推荐理由要简洁明了`;
+    `请根据以下信息，从菜单中推荐3道最适合的菜品：
+
+用户健康信息：
+- 用户ID：{clientId}
+- 年龄：{age}岁
+- 性别：{gender}
+- 慢性病：{chronicConditions}
+- 口味偏好：{tastePreferences}
+
+近期营养摄入（过去7天平均）：
+- 每日热量：{avgCalories} kcal
+- 蛋白质：{avgProtein} g
+- 脂肪：{avgFat} g
+- 碳水：{avgCarbs} g
+
+可选菜单：
+{dishesMenu}
+
+请严格按照以下JSON格式返回（只返回JSON，不要其他文字）：
+{
+  "recommendations": [
+    {
+      "dish_id": 菜品ID,
+      "reason": "推荐理由（30字以内）"
+    }
+  ]
+}
+
+【重要规则】：
+1. 必须从可选菜单中选择3道菜品
+2. 考虑营养均衡（蛋白质、蔬菜、主食搭配）
+3. 根据用户的具体慢性病情况提供针对性推荐
+4. 【强制要求】不同用户ID必须推荐不同的菜品组合
+5. 【强制要求】优先从菜单列表的前10道菜中选择（它们已经根据用户特征优化排序）
+6. 【强制要求】如果用户ID是偶数，避免推荐ID为112的菜品；如果用户ID是奇数，避免推荐ID为125的菜品
+7. 在满足健康要求的前提下，提供多样化的选择
+8. 推荐理由要简洁明了`;
 
   // 替换模板变量
   const userPrompt = userPromptTemplate
+    .replace('{clientId}', userData.clientId || '未知')
     .replace('{age}', userData.age || '未知')
     .replace('{gender}', userData.gender === 'male' ? '男' : userData.gender === 'female' ? '女' : '未知')
     .replace('{chronicConditions}', userData.chronicConditions || '无')
@@ -1047,6 +1111,11 @@ async function generateSmartRecommendation(userData, dishes) {
   console.log(`  - 年龄: ${userData.age}`);
   console.log(`  - 慢性病: ${userData.chronicConditions || '无'}`);
   console.log(`  - 平均热量: ${Math.round(userData.avgCalories || 0)} kcal`);
+  
+  console.log('\n菜单列表预览(前3道):');
+  const menuLines = dishesMenu.split('\n');
+  menuLines.slice(0, 3).forEach(line => console.log(`  ${line}`));
+  console.log(`  ... 共 ${menuLines.length} 道菜品`);
 
   console.log('\n发送 API 请求...');
 
@@ -1060,7 +1129,7 @@ async function generateSmartRecommendation(userData, dishes) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.7,
+        temperature: 0.9,
         max_tokens: 500,
         stream: false
       },
@@ -1090,7 +1159,7 @@ async function generateSmartRecommendation(userData, dishes) {
       result = JSON.parse(jsonStr);
     } catch (parseError) {
       console.error('[警告] JSON 解析失败，使用备用方案');
-      result = generateFallbackRecommendation(dishes);
+      result = generateFallbackRecommendation(availableDishes);
     }
 
     console.log(`\n推荐了 ${result.recommendations?.length || 0} 道菜品`);
@@ -1106,11 +1175,12 @@ async function generateSmartRecommendation(userData, dishes) {
     console.error(`\n[失败] API 请求失败:`);
     console.error(`  错误信息: ${JSON.stringify(errorMsg, null, 2)}`);
     console.log('========================================\n');
-    
+
     // 返回备用推荐
-    return generateFallbackRecommendation(dishes);
+    return generateFallbackRecommendation(availableDishes);
   }
 }
+
 
 /**
  * 生成备用推荐（当 API 调用失败时使用）

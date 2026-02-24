@@ -11,6 +11,20 @@ const { getPastDays } = require('../utils/dateHelper');
 
 const router = express.Router();
 
+// 推荐缓存 - 记录每个用户最近的推荐，避免重复
+const recommendationCache = new Map();
+const CACHE_EXPIRY = 30 * 60 * 1000; // 30分钟过期
+
+// 定期清理过期缓存
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of recommendationCache.entries()) {
+    if (now - value.timestamp > CACHE_EXPIRY) {
+      recommendationCache.delete(key);
+    }
+  }
+}, 10 * 60 * 1000); // 每10分钟检查一次
+
 // 技能关键词映射 - 与前端完全一致
 const skillKeywords = {
   '营养师 - 基础营养咨询': {
@@ -1094,8 +1108,30 @@ router.post('/smart-recommend', authRequired, requireRole('client'), async (req,
       }
     });
 
+    // 获取用户最近的推荐历史，避免重复
+    const cacheKey = `${clientId}_${store_id || 'all'}`;
+    const cachedRecommendations = recommendationCache.get(cacheKey);
+    const excludeDishIds = cachedRecommendations?.dishIds || [];
+    
+    // 获取所有用户最近的推荐，强制多样性
+    const allRecentRecommendations = new Set();
+    for (const [key, value] of recommendationCache.entries()) {
+      if (Date.now() - value.timestamp < 5 * 60 * 1000) { // 5分钟内的推荐
+        value.dishIds.forEach(id => allRecentRecommendations.add(id));
+      }
+    }
+    
+    // 根据用户ID选择不同的起始菜品，强制差异化
+    const userSeed = clientId % 10;
+    const filteredDishes = dishes.filter(d => !allRecentRecommendations.has(d.id));
+    const dishesToUse = filteredDishes.length >= 10 ? filteredDishes : dishes;
+    
+    console.log(`\n推荐历史: ${excludeDishIds.length > 0 ? `本用户已推荐 ${excludeDishIds.join(', ')}` : '无历史'}`);
+    console.log(`全局最近推荐: ${allRecentRecommendations.size > 0 ? Array.from(allRecentRecommendations).join(', ') : '无'}`);
+    console.log(`用户种子: ${userSeed}, 可用菜品: ${dishesToUse.length}`);
+
     // 调用 AI 服务生成推荐
-    const { recommendations, tokensUsed, model } = await generateSmartRecommendation(userData, dishes);
+    const { recommendations, tokensUsed, model } = await generateSmartRecommendation(userData, dishesToUse, excludeDishIds, userSeed);
 
     // 获取推荐的菜品详情
     const recommendedDishes = [];
@@ -1108,6 +1144,12 @@ router.post('/smart-recommend', authRequired, requireRole('client'), async (req,
         });
       }
     }
+
+    // 更新推荐缓存
+    recommendationCache.set(cacheKey, {
+      dishIds: recommendedDishes.map(d => d.id),
+      timestamp: Date.now()
+    });
 
     console.log(`\n推荐成功: ${recommendedDishes.length} 道菜品`);
 
