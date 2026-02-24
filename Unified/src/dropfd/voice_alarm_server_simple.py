@@ -396,7 +396,7 @@ def init_radar_visualization():
         # 更新Web客户端数量
         with ws_clients_lock:
             ws_count = len(websocket_clients)
-        network_status_text.set_text(f"Web客户端: {ws_count}")
+        network_status_text.set_text(f"客户端: {ws_count}")
         
         return target_point, trajectory_line, status_text, fall_warning, network_status_text
     

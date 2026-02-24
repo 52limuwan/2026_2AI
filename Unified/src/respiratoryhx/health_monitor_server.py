@@ -51,7 +51,6 @@ shutdown_event = threading.Event()
 hr_window = deque(maxlen=5)
 br_window = deque(maxlen=5)
 
-# 模拟模式控制
 simulation_mode = None
 simulation_lock = threading.Lock()
 breath_holding_start_time = None
@@ -132,7 +131,6 @@ def read_serial_data(port, baudrate=921600):
                     
                     current_time = time.time()
                     if current_time - last_process_time >= 0.2:
-                        # 只在非模拟模式下输出串口数据日志
                         with simulation_lock:
                             if simulation_mode is None:
                                 log_info("data", "frame", "数据帧", 
@@ -174,7 +172,6 @@ async def handle_client(websocket):
     client_addr = websocket.remote_address
     connected_clients.add(websocket)
     
-    # 用于控制模拟数据的日志输出频率
     last_sim_log_time = 0
     
     try:
@@ -185,7 +182,6 @@ async def handle_client(websocket):
             if current_sim_mode is not None:
                 import random
                 
-                # 用于控制模拟数据的日志输出频率
                 current_time = time.time()
                 should_log = (current_time - last_sim_log_time) >= 1.0  # 改为1秒输出一次
                 
@@ -196,13 +192,11 @@ async def handle_client(websocket):
                     
                     holding_duration = time.time() - breath_holding_start_time
                     
-                    # 呼吸率从25逐渐降到0（2秒内）
                     if holding_duration < 2:
                         BR = 25 * (1 - holding_duration / 2)
                     else:
                         BR = 0
                     
-                    # 心率从75逐渐升高到100+（2秒内）
                     if holding_duration < 2:
                         HR = 75 + (holding_duration / 2) * 30  # 75 -> 105
                     else:
