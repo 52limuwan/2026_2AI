@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { getToday, getLocalDateTimeString } = require('../utils/dateHelper');
+const { printOrder } = require('./printerService');
 
 function generateOrderNumber() {
   return `ORD-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}-${Math.floor(Math.random() * 999)}`;
@@ -212,6 +213,14 @@ async function createOrder({
     }
   }
 
+  // 打印外卖单（异步，不阻塞订单创建）
+  if (order) {
+    printOrder(order).catch(err => {
+      console.error('打印订单失败:', err);
+      // 打印失败不影响订单创建，只记录错误
+    });
+  }
+
   return order;
 }
 
@@ -386,13 +395,14 @@ async function sendOrderStatusNotification(order, newStatus) {
 }
 
 async function formatOrderRow(row) {
-  const items = (await db.all('SELECT * FROM order_items WHERE order_id = :order_id', { order_id: row.id })).map((item) => ({
+  const items = (await db.all('SELECT oi.*, d.image as dish_image FROM order_items oi LEFT JOIN dishes d ON oi.dish_id = d.id WHERE oi.order_id = :order_id', { order_id: row.id })).map((item) => ({
     id: item.id,
     dish_id: item.dish_id,
     dish_name: item.dish_name,
     quantity: item.quantity,
     price: item.price,
-    nutrition: item.nutrition ? JSON.parse(item.nutrition) : null
+    nutrition: item.nutrition ? JSON.parse(item.nutrition) : null,
+    image_url: item.dish_image || null  // 添加图片URL
   }));
   return {
     ...row,

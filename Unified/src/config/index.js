@@ -24,7 +24,7 @@ const config = {
 
   // 应用配置
   app: {
-    name: '智膳伙伴',
+    name: '康小伴',
     version: '1.0.0',
     env: import.meta.env.MODE || 'development',
     isDevelopment: import.meta.env.DEV,

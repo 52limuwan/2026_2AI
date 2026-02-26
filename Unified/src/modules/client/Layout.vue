@@ -64,7 +64,7 @@ const isTabPage = computed(() => !route.meta?.hideTabBar)
 const showTabBar = computed(() => isTabPage.value)
 const showBack = computed(() => !isTabPage.value)
 const isAIPage = computed(() => route.path === '/client/ai')
-const headerTitle = computed(() => (isTabPage.value ? '智膳伙伴' : route.meta?.title || '返回'))
+const headerTitle = computed(() => (isTabPage.value ? '康小伴' : route.meta?.title || '返回'))
 const headerSubtitle = computed(() => {
   if (!isTabPage.value) return ''
   if (selectedStore.value) {

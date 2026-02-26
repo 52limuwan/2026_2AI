@@ -100,12 +100,13 @@ async function bootstrap() {
     app.use('/api/reports', require('./routes/reports'));
     app.use('/api/ai', require('./routes/ai'));
     app.use('/api/skills', require('./routes/skills'));
+    app.use('/api/printer', require('./routes/printer'));
 
     // 根路径
     app.get('/', (_req, res) => {
       res.json({
         code: 0,
-        message: '智膳伙伴-API 已运行',
+        message: '康小伴-API 已运行',
         data: {
           version: '1.0.0',
           roles: ['client', 'guardian', 'merchant', 'gov']

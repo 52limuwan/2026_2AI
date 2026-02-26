@@ -1,7 +1,7 @@
 <template>
   <div class="login-page">
     <div class="login-body">
-      <h1 class="title">智膳伙伴</h1>
+      <h1 class="title">康小伴</h1>
       <p class="muted">统一认证</p>
 
       <label class="field">

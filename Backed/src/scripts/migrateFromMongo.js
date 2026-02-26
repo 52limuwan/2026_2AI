@@ -72,7 +72,7 @@ async function seedUsers() {
       name: '社区厨房',
       role: 'merchant',
       phone: '13700000003',
-      profile: { merchant_name: '智膳伙伴餐厨房', community: '和平社区', contact: '13700000003' }
+      profile: { merchant_name: '康小伴餐厨房', community: '和平社区', contact: '13700000003' }
     },
     {
       username: 'gov01',

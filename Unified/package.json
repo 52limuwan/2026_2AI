@@ -1,7 +1,7 @@
 {
   "name": "unified-portal",
   "version": "1.0.0",
-  "description": "智膳伙伴四端门户（销售端/监护人端/商户端/政府端）",
+  "description": "康小伴四端门户（销售端/监护人端/商户端/政府端）",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 8888",
