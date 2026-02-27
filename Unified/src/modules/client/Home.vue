@@ -164,6 +164,37 @@
       <button class="ghost-btn" @click="goAiReports">查看历史报告</button>
     </div>
 
+    <!-- 个性化推荐菜单 -->
+    <div v-if="personalizedDishes.length > 0" class="card personalized-menu">
+      <div class="section-header">
+        <h3 class="card-title">为您推荐</h3>
+        <span class="health-badge">{{ healthConditions }}</span>
+      </div>
+      <p class="section-desc">根据您的健康状况精心挑选</p>
+      
+      <div class="dish-grid">
+        <div v-for="dish in personalizedDishes" :key="dish.id" class="dish-card" @click="viewDish(dish)">
+          <div class="dish-image-wrapper">
+            <img v-if="dish.image" :src="dish.image" :alt="dish.name" class="dish-image" />
+            <div v-else class="dish-image-placeholder">🍽️</div>
+            <div class="dish-tag">{{ dish.matchReason }}</div>
+          </div>
+          <div class="dish-info">
+            <h4 class="dish-name">{{ dish.name }}</h4>
+            <div class="dish-tags">
+              <span v-for="tag in dish.tags.slice(0, 2)" :key="tag" class="tag">{{ tag }}</span>
+            </div>
+            <div class="dish-footer">
+              <span class="dish-price">¥{{ dish.price }}</span>
+              <span class="dish-merchant">{{ dish.merchant }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <button class="ghost-btn" @click="goMenu">查看更多菜品</button>
+    </div>
+
     <!-- 求助与联系 -->
     <div class="card">
       <div class="muted">求助与联系</div>
@@ -178,10 +209,12 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getRecommendations, getOrders, getWeeklyReport, getTodayNutrition } from '../../api/client'
+import { getRecommendations, getOrders, getWeeklyReport, getTodayNutrition, getPersonalizedRecommendations } from '../../api/client'
 
 const router = useRouter()
 const recommendations = ref([])
+const personalizedDishes = ref([])
+const healthConditions = ref('')
 const latestOrder = ref(null)
 const orders = ref([])
 const weeklyReport = ref(null)
@@ -739,9 +772,29 @@ const loadRecommendations = async () => {
   recommendations.value = rec
 }
 
+const loadPersonalizedRecommendations = async () => {
+  try {
+    const selectedStoreId = localStorage.getItem('selectedStoreId')
+    const params = selectedStoreId ? { store_id: selectedStoreId } : {}
+    const res = await getPersonalizedRecommendations(params)
+    personalizedDishes.value = res.data.data.recommendations || []
+    if (res.data.data.conditions && res.data.data.conditions.length > 0) {
+      healthConditions.value = res.data.data.conditions.join('、')
+    }
+  } catch (err) {
+    console.error('获取个性化推荐失败', err)
+  }
+}
+
+const viewDish = (dish) => {
+  // 跳转到菜单页面并高亮该菜品
+  router.push({ path: '/client/menu', query: { highlight: dish.id } })
+}
+
 onMounted(async () => {
   try {
     await loadRecommendations()
+    await loadPersonalizedRecommendations()
     const ordersData = (await getOrders()).data.data.orders || []
     orders.value = ordersData
     latestOrder.value = ordersData[0]
@@ -783,14 +836,163 @@ onMounted(async () => {
   }
   
   window.addEventListener('client-store-changed', loadRecommendations)
+  window.addEventListener('client-store-changed', loadPersonalizedRecommendations)
 })
 
 onUnmounted(() => {
   window.removeEventListener('client-store-changed', loadRecommendations)
+  window.removeEventListener('client-store-changed', loadPersonalizedRecommendations)
 })
 </script>
 
 <style scoped>
+/* 个性化菜单样式 - 统一配色 */
+.personalized-menu {
+  background: white;
+  border: 1px solid var(--border);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.health-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: var(--surface-soft);
+  color: var(--text);
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+.section-desc {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 16px 0;
+}
+
+.dish-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dish-card {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  border: 1px solid #e5e7eb;
+}
+
+.dish-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.dish-card:active {
+  transform: translateY(0);
+}
+
+.dish-image-wrapper {
+  position: relative;
+  width: 100%;
+  padding-top: 75%;
+  background: #f3f4f6;
+  overflow: hidden;
+}
+
+.dish-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dish-image-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+}
+
+.dish-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(31, 156, 122, 0.95);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+
+.dish-info {
+  padding: 12px;
+}
+
+.dish-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 8px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dish-tags {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+}
+
+.dish-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dish-price {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ef4444;
+}
+
+.dish-merchant {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* 空状态 - Apple/Google 风格 */
 .health-summary-empty {
   text-align: center;

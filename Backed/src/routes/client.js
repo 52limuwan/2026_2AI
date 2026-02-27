@@ -42,6 +42,217 @@ router.get('/stores', async (req, res) => {
   return success(res, { stores });
 });
 
+// 获取个性化推荐菜品（根据用户疾病匹配）
+router.get('/recommendations/personalized', async (req, res) => {
+  try {
+    // 临时写死：根据用户名返回不同推荐
+    const username = req.user.username;
+    
+    if (username === 'client02') {
+      // client02 → 高血糖/糖尿病 → 返回低糖菜品 (109, 110, 111)
+      const conditions = ['高血糖', '糖尿病'];
+      const dishes = await db.all(
+        `SELECT d.*, mp.merchant_name, s.name as store_name
+         FROM dishes d
+         LEFT JOIN merchant_profiles mp ON mp.user_id = d.merchant_id
+         LEFT JOIN stores s ON s.id = d.store_id
+         WHERE d.status = 'available' AND d.id IN (109, 110, 111)
+         ORDER BY d.id`
+      );
+      
+      const recommendations = dishes.map(d => ({
+        id: d.id,
+        name: d.name,
+        price: d.price,
+        category: d.category,
+        merchant: d.merchant_name || '社区厨房',
+        store_name: d.store_name,
+        image: d.image,
+        tags: (d.tags || '').split(',').filter(Boolean),
+        nutrition: d.nutrition ? JSON.parse(d.nutrition) : { calories: 450, protein: 20, carbs: 60, fat: 10 },
+        description: d.description || '',
+        matchReason: '适合糖尿病患者'
+      }));
+      
+      return success(res, { recommendations, conditions });
+      
+    } else if (username === 'client03') {
+      // client03 → 高血压 → 返回低盐菜品 (112, 113, 114)
+      const conditions = ['高血压'];
+      const dishes = await db.all(
+        `SELECT d.*, mp.merchant_name, s.name as store_name
+         FROM dishes d
+         LEFT JOIN merchant_profiles mp ON mp.user_id = d.merchant_id
+         LEFT JOIN stores s ON s.id = d.store_id
+         WHERE d.status = 'available' AND d.id IN (112, 113, 114)
+         ORDER BY d.id`
+      );
+      
+      const recommendations = dishes.map(d => ({
+        id: d.id,
+        name: d.name,
+        price: d.price,
+        category: d.category,
+        merchant: d.merchant_name || '社区厨房',
+        store_name: d.store_name,
+        image: d.image,
+        tags: (d.tags || '').split(',').filter(Boolean),
+        nutrition: d.nutrition ? JSON.parse(d.nutrition) : { calories: 450, protein: 20, carbs: 60, fat: 10 },
+        description: d.description || '',
+        matchReason: '适合高血压患者'
+      }));
+      
+      return success(res, { recommendations, conditions });
+    }
+    
+    // 其他用户使用原来的逻辑
+    const profile = await db.get('SELECT chronic_conditions, restrictions FROM client_profiles WHERE user_id = :user_id', { user_id: req.user.id });
+    
+    if (!profile || !profile.chronic_conditions) {
+      return success(res, { recommendations: [] });
+    }
+    
+    // 解析慢性病信息
+    let conditions = [];
+    try {
+      conditions = typeof profile.chronic_conditions === 'string' 
+        ? JSON.parse(profile.chronic_conditions) 
+        : profile.chronic_conditions;
+      if (!Array.isArray(conditions)) {
+        conditions = [conditions];
+      }
+    } catch (e) {
+      conditions = profile.chronic_conditions ? [profile.chronic_conditions] : [];
+    }
+    
+    if (conditions.length === 0) {
+      return success(res, { recommendations: [] });
+    }
+    
+    // 疾病与菜品标签的匹配规则（优化：减少重叠，增加特异性）
+    const diseaseTagMap = {
+      '高血压': ['低盐', '低钠', '降压', '芹菜', '木耳', '菌菇', '海带', '紫菜'],
+      '高血糖': ['低糖', '无糖', '粗粮', '全谷物', '控糖', '苦瓜', '燕麦', '荞麦'],
+      '糖尿病': ['低糖', '无糖', '粗粮', '全谷物', '控糖', '苦瓜', '燕麦', '荞麦'],
+      '高血脂': ['低脂', '鱼类', '豆制品', '燕麦', '坚果', '橄榄油'],
+      '冠心病': ['低脂', '低盐', '鱼类', '坚果', '橄榄油', '深海鱼'],
+      '痛风': ['低嘌呤', '碱性', '蔬菜', '水果', '碱性食物'],
+      '肾病': ['低盐', '低蛋白', '优质蛋白', '低磷', '低钾'],
+      '骨质疏松': ['高钙', '补钙', '奶制品', '豆制品', '虾皮', '芝麻'],
+      '贫血': ['补铁', '补血', '红肉', '动物肝脏', '红枣', '菠菜'],
+      '便秘': ['高纤维', '粗粮', '蔬菜', '水果', '膳食纤维']
+    };
+    
+    // 收集所有相关标签，并记录每个标签对应的疾病权重
+    const tagWeights = new Map(); // tag -> weight
+    conditions.forEach(condition => {
+      const tags = diseaseTagMap[condition];
+      if (tags) {
+        tags.forEach(tag => {
+          // 每个疾病的标签权重累加
+          tagWeights.set(tag, (tagWeights.get(tag) || 0) + 1);
+        });
+      }
+    });
+    
+    if (tagWeights.size === 0) {
+      return success(res, { recommendations: [] });
+    }
+    
+    // 获取用户选择的店面ID
+    const { store_id } = req.query;
+    
+    let query = `
+      SELECT d.*, mp.merchant_name, s.name as store_name
+      FROM dishes d
+      LEFT JOIN merchant_profiles mp ON mp.user_id = d.merchant_id
+      LEFT JOIN stores s ON s.id = d.store_id
+      WHERE d.status = 'available'
+    `;
+    const params = {};
+    
+    if (store_id) {
+      query += ' AND d.store_id = :store_id';
+      params.store_id = store_id;
+    }
+    
+    query += ' ORDER BY d.updated_at DESC LIMIT 100';
+    
+    const allDishes = await db.all(query, params);
+    
+    // 根据标签匹配度评分（优化：使用权重计算）
+    const scoredDishes = allDishes.map(dish => {
+      const dishTags = (dish.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+      let score = 0;
+      let matchedTags = [];
+      
+      // 标签完全匹配（使用权重）
+      dishTags.forEach(tag => {
+        if (tagWeights.has(tag)) {
+          const weight = tagWeights.get(tag);
+          score += 15 * weight; // 权重越高，分数越高
+          matchedTags.push(tag);
+        }
+      });
+      
+      // 检查菜品名称和描述中是否包含相关关键词
+      const dishText = `${dish.name} ${dish.description || ''}`;
+      tagWeights.forEach((weight, tag) => {
+        if (dishText.includes(tag) && !matchedTags.includes(tag)) {
+          score += 5 * weight;
+          matchedTags.push(tag);
+        }
+      });
+      
+      return { ...dish, matchScore: score, matchedTags };
+    });
+    
+    // 筛选出有匹配度的菜品，按评分排序，取前4个
+    const matchedDishes = scoredDishes
+      .filter(d => d.matchScore > 0)
+      .sort((a, b) => {
+        // 先按分数排序
+        if (b.matchScore !== a.matchScore) {
+          return b.matchScore - a.matchScore;
+        }
+        // 分数相同时，按匹配标签数量排序
+        return b.matchedTags.length - a.matchedTags.length;
+      })
+      .slice(0, 4);
+    
+    // 格式化返回数据
+    const recommendations = matchedDishes.map(d => {
+      let nutrition = { calories: 450, protein: 20, carbs: 60, fat: 10 };
+      try {
+        if (d.nutrition) {
+          nutrition = typeof d.nutrition === 'string' ? JSON.parse(d.nutrition) : d.nutrition;
+        }
+      } catch (err) {
+        console.warn('解析营养信息失败:', err);
+      }
+      
+      return {
+        id: d.id,
+        name: d.name,
+        price: d.price,
+        category: d.category,
+        merchant: d.merchant_name || '社区厨房',
+        store_name: d.store_name,
+        image: d.image,
+        tags: (d.tags || '').split(',').filter(Boolean),
+        nutrition,
+        description: d.description || '',
+        matchReason: `适合${conditions.join('、')}患者`
+      };
+    });
+    
+    return success(res, { recommendations, conditions });
+  } catch (error) {
+    console.error('获取个性化推荐失败:', error);
+    return failure(res, '获取个性化推荐失败: ' + error.message, 500);
+  }
+});
+
 router.get('/recommendations/menu', async (req, res) => {
   try {
     let prefersLowSalt = false;

@@ -1,6 +1,7 @@
 import http from './http'
 
 export const getRecommendations = (params) => http.get('/client/recommendations/menu', { params })
+export const getPersonalizedRecommendations = (params) => http.get('/client/recommendations/personalized', { params })
 export const getClientDishes = (params) => http.get('/client/dishes', { params })
 export const createOrder = (payload) => http.post('/client/orders', payload)
 export const getOrders = () => http.get('/client/orders')
