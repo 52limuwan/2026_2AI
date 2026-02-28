@@ -1269,28 +1269,43 @@ router.post('/chat/client/stream', authRequired, requireRole('client'), async (r
     }
     
     // 构建 dify API 请求体
+    // 方案A：将技能内容拼接到 query 前面，而不是使用 inputs.systemprompt
+    // 这样可以在同一个会话中保持上下文
+    let finalQuery = message;
+    
+    if (skillContent) {
+      // 只在第一次使用技能或技能切换时，将技能内容添加到 query 前面
+      if (shouldUpdateSkill) {
+        finalQuery = `${skillContent}\n\n---\n\n用户问题：${message}`;
+        console.log(`  将技能内容拼接到 query 前面（首次/切换）`);
+      } else {
+        // 后续对话不需要重复发送技能内容，直接使用用户消息
+        finalQuery = message;
+        console.log(`  继续使用缓存技能，不重复发送技能内容`);
+      }
+    }
+    
     const requestBody = {
       files: [],
-      inputs: {
-        systemprompt: skillContent || ''
-      },
-      query: message,
-      response_mode: 'streaming', // 使用流式模式
-      user: `user_${userId}`
+      inputs: {},
+      query: finalQuery,
+      response_mode: 'streaming',
+      user: `user_${userId}`,
+      conversation_id: ''  // 始终为空，每次创建新会话
     };
     
-    // 只有当 conversationId 存在且有效时才添加
-    if (conversationId && conversationId.trim()) {
-      requestBody.conversation_id = conversationId;
-    }
+    console.log(`  每次创建新会话（conversation_id 为空）`);
     
     console.log(`  请求体结构:`);
-    console.log(`    - query: ${message}`);
-    console.log(`    - systemprompt 长度: ${skillContent.length} 字符`);
-    if (skillContent) {
-      console.log(`    - systemprompt 预览: ${skillContent.substring(0, 200)}...`);
+    console.log(`    - query 长度: ${finalQuery.length} 字符`);
+    if (skillContent && shouldUpdateSkill) {
+      console.log(`    - query 包含技能内容 + 用户消息`);
+      console.log(`    - 技能内容长度: ${skillContent.length} 字符`);
+      console.log(`    - 用户消息: ${message}`);
+    } else {
+      console.log(`    - query: ${message}`);
     }
-    console.log(`    - conversation_id: ${conversationId || '(新对话)'}`);
+    console.log(`    - conversation_id: ${requestBody.conversation_id || '(新对话)'}`);
     console.log(`    - 技能状态: ${shouldUpdateSkill ? '新技能/切换' : cachedSkill ? '使用缓存' : '无技能'}`);
     console.log(`    - response_mode: streaming`);
     
@@ -1324,8 +1339,10 @@ router.post('/chat/client/stream', authRequired, requireRole('client'), async (r
     
     // 处理流式响应
     difyResponse.data.on('data', (chunk) => {
+      const chunkStr = chunk.toString();
+      
       // 将新数据添加到缓冲区
-      buffer += chunk.toString();
+      buffer += chunkStr;
       
       // 按行分割，保留最后一个不完整的行
       const lines = buffer.split('\n');
@@ -1418,8 +1435,7 @@ router.post('/chat/client/stream', authRequired, requireRole('client'), async (r
     });
     
   } catch (error) {
-    console.error('AI顾问聊天失败:', error);
-    console.error('错误详情:', error.response?.data || error.message);
+    console.error('AI顾问聊天失败:', error.message);
     
     if (!res.writableEnded) {
       res.write(`data: ${JSON.stringify({ type: 'error', message: error.message || '聊天失败' })}\n\n`);
