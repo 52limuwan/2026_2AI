@@ -883,6 +883,33 @@ onUnmounted(() => {
   margin-bottom: 16px;
 }
 
+/* 响应式布局 - 小屏幕显示1列 */
+@media (max-width: 480px) {
+  .dish-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 中等屏幕显示2列 */
+@media (min-width: 481px) and (max-width: 768px) {
+  .dish-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 大屏幕显示3-4列 */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .dish-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1025px) {
+  .dish-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
 .dish-card {
   background: white;
   border-radius: 12px;
