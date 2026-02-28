@@ -81,6 +81,8 @@
     </div>
     </div>
 
+    <!-- 机器人视频流已隐藏 -->
+    <!--
     <div class="card robot-view" v-if="orderData.status === 'preparing' || orderData.status === 'delivering'">
       <div class="view-title">
         <i class="fas fa-video"></i> 机械臂实时画面
@@ -125,6 +127,7 @@
         <button class="primary-btn" @click="handleQucan">取餐</button>
       </div>
     </div>
+    -->
   </div>
 </template>
 
