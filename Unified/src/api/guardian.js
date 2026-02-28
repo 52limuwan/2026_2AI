@@ -18,3 +18,7 @@ export const generateWeeklyAiAnalysis = (clientId) => http.post(`/ai/diet-analys
 export const generateMonthlyAiAnalysis = (clientId) => http.post(`/ai/diet-analysis/guardian/monthly/${clientId}`)
 export const getAiDietReports = (clientId, params) => http.get(`/ai/guardian/diet-reports/${clientId}`, { params })
 export const getAiDietReportById = (clientId, reportId) => http.get(`/ai/guardian/diet-reports/${clientId}/${reportId}`)
+
+// 用户设置相关API
+export const getUserSettings = () => http.get('/guardian/settings')
+export const updateUserSettings = (payload) => http.put('/guardian/settings', payload)

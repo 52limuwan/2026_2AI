@@ -21,63 +21,65 @@
           </el-button>
         </div>
 
-        <el-scrollbar height="calc(100vh - 200px)">
-          <div v-if="loading" class="loading-container">
-            <el-skeleton :rows="5" animated />
-          </div>
+        <div class="skills-container">
+          <el-scrollbar>
+            <div v-if="loading" class="loading-container">
+              <el-skeleton :rows="5" animated />
+            </div>
 
-          <div v-else-if="skills.length === 0" class="empty-container">
-            <el-empty description="暂无技能" />
-          </div>
+            <div v-else-if="skills.length === 0" class="empty-container">
+              <el-empty description="暂无技能" />
+            </div>
 
-          <div v-else class="skills-grid">
-            <div
-              v-for="skill in skills"
-              :key="skill.id"
-              class="skill-card"
-              :class="{ 'system-skill': skill.isSystem }"
-            >
-              <div class="skill-header">
-                <div class="skill-title">
-                  <el-icon v-if="skill.isSystem" class="system-icon">
-                    <Star />
-                  </el-icon>
-                  {{ skill.name }}
+            <div v-else class="skills-grid">
+              <div
+                v-for="skill in skills"
+                :key="skill.id"
+                class="skill-card"
+                :class="{ 'system-skill': skill.isSystem }"
+              >
+                <div class="skill-header">
+                  <div class="skill-title">
+                    <el-icon v-if="skill.isSystem" class="system-icon">
+                      <Star />
+                    </el-icon>
+                    <span class="skill-name">{{ skill.name }}</span>
+                  </div>
+                  <el-tag v-if="skill.isSystem" size="small" type="info">
+                    系统
+                  </el-tag>
+                  <el-tag v-else size="small" type="success">
+                    自定义
+                  </el-tag>
                 </div>
-                <el-tag v-if="skill.isSystem" size="small" type="info">
-                  系统
-                </el-tag>
-                <el-tag v-else size="small" type="success">
-                  自定义
-                </el-tag>
-              </div>
 
-              <div class="skill-actions">
-                <el-button
-                  size="small"
-                  @click="viewSkill(skill)"
-                >
-                  查看
-                </el-button>
-                <el-button
-                  v-if="!skill.isSystem"
-                  size="small"
-                  @click="editSkill(skill)"
-                >
-                  编辑
-                </el-button>
-                <el-button
-                  v-if="!skill.isSystem"
-                  size="small"
-                  type="danger"
-                  @click="confirmDelete(skill)"
-                >
-                  删除
-                </el-button>
+                <div class="skill-actions">
+                  <el-button
+                    size="small"
+                    @click="viewSkill(skill)"
+                  >
+                    查看
+                  </el-button>
+                  <el-button
+                    v-if="!skill.isSystem"
+                    size="small"
+                    @click="editSkill(skill)"
+                  >
+                    编辑
+                  </el-button>
+                  <el-button
+                    v-if="!skill.isSystem"
+                    size="small"
+                    type="danger"
+                    @click="confirmDelete(skill)"
+                  >
+                    删除
+                  </el-button>
+                </div>
               </div>
             </div>
-          </div>
-        </el-scrollbar>
+          </el-scrollbar>
+        </div>
       </div>
     </div>
 
@@ -387,7 +389,17 @@ watch(() => visible.value, (val) => {
 
 <style scoped>
 .skill-manager {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   padding: 0 20px;
+}
+
+.skill-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 .list-header {
@@ -395,6 +407,7 @@ watch(() => visible.value, (val) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  flex-shrink: 0;
 }
 
 .list-header h3 {
@@ -403,14 +416,31 @@ watch(() => visible.value, (val) => {
   font-weight: 600;
 }
 
+.skills-container {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.skills-container :deep(.el-scrollbar) {
+  height: 100%;
+}
+
+.skills-container :deep(.el-scrollbar__wrap) {
+  overflow-x: hidden;
+}
+
 .loading-container,
 .empty-container {
   padding: 40px 0;
+  text-align: center;
 }
 
 .skills-grid {
   display: grid;
   gap: 16px;
+  padding: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
 }
 
 .skill-card {
@@ -418,39 +448,61 @@ watch(() => visible.value, (val) => {
   border-radius: 8px;
   padding: 16px;
   transition: all 0.3s;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  min-height: 100px;
 }
 
 .skill-card:hover {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
 }
 
 .skill-card.system-skill {
   background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+  border-color: #d4d7de;
 }
 
 .skill-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 12px;
+  gap: 12px;
+  flex: 1;
 }
 
 .skill-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 .skill-title .system-icon {
   color: #f59e0b;
+  flex-shrink: 0;
 }
 
 .skill-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .form-tip {
@@ -460,22 +512,70 @@ watch(() => visible.value, (val) => {
   line-height: 1.5;
 }
 
+/* 平板设备 */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .skills-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+}
+
+/* 移动设备 */
 @media (max-width: 768px) {
   .skill-manager {
     padding: 0 12px;
+  }
+
+  .list-header {
+    margin-bottom: 16px;
+  }
+
+  .list-header h3 {
+    font-size: 16px;
+  }
+
+  .skills-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .skill-card {
     padding: 12px;
   }
 
+  .skill-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .skill-title {
+    font-size: 14px;
+  }
+
   .skill-actions {
-    flex-wrap: wrap;
+    width: 100%;
   }
 
   .skill-actions .el-button {
     flex: 1;
     min-width: 60px;
+  }
+}
+
+/* 小屏手机 */
+@media (max-width: 480px) {
+  .skill-manager {
+    padding: 0 8px;
+  }
+
+  .list-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .list-header .el-button {
+    width: 100%;
   }
 }
 </style>

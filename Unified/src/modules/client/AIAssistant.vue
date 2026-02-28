@@ -203,6 +203,18 @@
             </p>
           </div>
           
+          <!-- 语音转文字显示区域 -->
+          <div class="voice-transcript" v-if="voiceTranscript.length > 0">
+            <div 
+              v-for="(item, index) in voiceTranscript" 
+              :key="index"
+              class="transcript-item"
+              :class="{ 'user': item.isUser, 'ai': !item.isUser }"
+            >
+              <div class="transcript-text">{{ item.text }}</div>
+            </div>
+          </div>
+          
           <div class="call-controls">
             <button class="call-control-btn hangup-btn" @click="handleHangup">
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -221,6 +233,9 @@
 
   <!-- Skill管理器 -->
   <SkillManager v-model="showSkillManager" />
+  
+  <!-- 设置对话框 -->
+  <SettingsDialog v-model="showSettingsDialog" />
 </template>
 
 <script setup>
@@ -231,20 +246,36 @@ import { useUserStore } from '../../stores/user'
 import { showToast } from '../../utils/toast'
 import BottomSheet from '../../components/BottomSheet.vue'
 import SkillManager from '../../components/SkillManager.vue'
+import SettingsDialog from '../../components/SettingsDialog.vue'
 import { getXiaozhiWebSocket, getDeviceConfig, getOtaUrl } from '../../utils/xiaozhi-websocket'
 
 const userStore = useUserStore()
 
-// WebSocket 实例 - 客户端专用
-const ws = getXiaozhiWebSocket('client')
+// WebSocket 实例 - 按需获取（不在 setup 阶段初始化）
+let wsInstance = null
 const wsConnected = ref(false)
 const wsConnecting = ref(false)
+const isVoiceMode = ref(false) // 跟踪语音模式状态
+
+// 获取或创建 WebSocket 实例
+const getWsInstance = async () => {
+  if (!wsInstance) {
+    try {
+      wsInstance = await getXiaozhiWebSocket('client')
+    } catch (error) {
+      console.error('获取 WebSocket 实例失败:', error)
+      throw error
+    }
+  }
+  return wsInstance
+}
 
 // 客户端专属的 OTA URL
 const CLIENT_OTA_URL = getOtaUrl('client')
 
 // Skill管理器状态
 const showSkillManager = ref(false)
+const showSettingsDialog = ref(false)
 
 const inputText = ref('')
 const messagesRef = ref(null)
@@ -471,6 +502,7 @@ const phoneCallMask = ref(null)
 const buttonPosition = ref({ x: 0, y: 0 })
 const maskScale = ref(0)
 const callStatus = ref('calling') // 'calling' | 'connected' | 'ended'
+const voiceTranscript = ref([]) // 语音转文字记录
 let callStatusTimer = null
 
 // 欢迎消息（特殊的，不会保存到数据库）
@@ -569,6 +601,11 @@ const connectWebSocket = async () => {
   
   wsConnecting.value = true
   try {
+    // 使用全局 wsInstance
+    if (!wsInstance) {
+      wsInstance = await getWsInstance()
+    }
+    
     const deviceConfig = getDeviceConfig()
     
     // 检查是否配置了直接 WebSocket URL
@@ -577,20 +614,21 @@ const connectWebSocket = async () => {
     if (directWsUrl) {
       // 使用直接 WebSocket 连接
       console.log('使用直接 WebSocket 连接:', directWsUrl)
-      await ws.connect(null, deviceConfig, directWsUrl)
+      await wsInstance.connect(null, deviceConfig, directWsUrl)
     } else {
       // 使用 OTA 方式连接
       console.log('使用 OTA 连接:', CLIENT_OTA_URL)
-      await ws.connect(CLIENT_OTA_URL, deviceConfig)
+      await wsInstance.connect(CLIENT_OTA_URL, deviceConfig)
     }
     
     wsConnected.value = true
     
     // 注册消息处理器
-    ws.onMessage(handleWebSocketMessage)
+    console.log('📝 注册消息处理器 handleWebSocketMessage');
+    wsInstance.onMessage(handleWebSocketMessage)
     
-    // 注册连接状态处理器
-    ws.onConnectionStateChange((isConnected) => {
+    // 注册连接状态处理器（直接赋值）
+    wsInstance.onConnectionStateChange = (isConnected) => {
       wsConnected.value = isConnected
       if (!isConnected) {
         showToast('连接已断开')
@@ -601,9 +639,9 @@ const connectWebSocket = async () => {
           }
         }, 3000)
       }
-    })
+    }
     
-    console.log('WebSocket 连接成功')
+    console.log('WebSocket 连接成功，消息处理器已注册')
   } catch (error) {
     console.error('连接失败:', error)
     showToast('连接失败，请重试')
@@ -615,104 +653,120 @@ const connectWebSocket = async () => {
 // 处理 WebSocket 消息
 const handleWebSocketMessage = (message) => {
   console.log('收到消息:', message)
+  console.log('当前 isVoiceMode:', isVoiceMode.value);
+  console.log('当前 messages 数组长度:', messages.value.length);
+  
+  // 如果不在语音模式，忽略所有语音相关消息
+  if (!isVoiceMode.value) {
+    console.log('不在语音模式，忽略消息');
+    return;
+  }
   
   if (message.type === 'llm') {
-    // AI 回复 - 只处理表情符号
-    if (message.text && /^[\u{1F300}-\u{1F9FF}]$/u.test(message.text)) {
-      console.log('收到表情:', message.text)
-    }
+    // LLM 消息通常只是表情符号，不需要处理到聊天框
+    console.log('LLM 回复 (通常是表情):', message.text)
+    // 不处理LLM消息，真正的文本在TTS消息中
+    
   } else if (message.type === 'stt') {
     // 语音识别结果
     console.log('STT 识别结果:', message.text)
     
+    // 在语音模式下，添加到语音转文字记录
+    if (isVoiceMode.value && message.text && message.text.trim()) {
+      voiceTranscript.value.push({
+        text: message.text,
+        isUser: true,
+        timestamp: Date.now()
+      });
+    }
+    
     // 只在语音模式下处理 STT 消息（避免文本消息重复）
-    if (ws.getVoiceMode() && message.text && message.text.trim()) {
+    if (isVoiceMode.value && message.text && message.text.trim()) {
       const userMessage = {
         role: 'user',
         content: message.text,
         timestamp: Date.now(),
-        skillSteps: null
+        skillSteps: null,
+        saved: false // 标记是否已保存
       }
       messages.value.push(userMessage)
-      const userMessageIndex = messages.value.length - 1
+      console.log('✅ 用户消息已添加到 messages 数组，当前长度:', messages.value.length);
+      console.log('当前 messages 数组:', messages.value.map(m => ({ role: m.role, content: m.content.substring(0, 20) })));
       scrollToBottom()
       
-      // 保存用户消息到数据库
-      saveMessageToDatabase(userMessage)
+      // 立即保存用户消息到数据库
+      console.log('📝 保存用户消息:', message.text);
+      saveMessageToDatabase(userMessage).then(() => {
+        userMessage.saved = true
+        console.log('✅ 用户消息已保存');
+      }).catch(err => {
+        console.error('❌ 保存用户消息失败:', err);
+      })
       
-      // 识别技能并为这条消息创建技能卡片（与文字聊天保持一致）
-      const detectedSkill = detectSkill(message.text)
-      let messageSkillSteps = []
-      
-      if (detectedSkill) {
-        // 检测到技能，先只显示"思考中"
-        activeSkill.value = detectedSkill
-        messageSkillSteps = [
-          { type: 'thinking', title: '思考中', skillName: '' }
-        ]
-        
-        // 将初始技能卡片附加到用户消息
-        messages.value[userMessageIndex].skillSteps = messageSkillSteps
-        
-        // 启动动画效果，逐步添加卡片
-        startSkillAnimationForMessage(userMessageIndex, detectedSkill)
-      } else {
-        // 没有检测到技能，只显示"思考中"
-        messageSkillSteps = [
-          { type: 'thinking', title: '思考中', skillName: '' }
-        ]
-        
-        // 将简单的思考卡片附加到用户消息
-        messages.value[userMessageIndex].skillSteps = messageSkillSteps
-      }
-      
+      // 语音模式下不需要技能检测，只显示简单的思考状态
       // 显示"思考中"状态
       isThinking.value = true
     }
     
   } else if (message.type === 'tts') {
-    // TTS 状态和文本内容
+    // TTS 状态和文本内容 - 这是真正的AI回复
     if (message.state === 'start') {
-      // 开始新的 AI 回复 - 保持思考状态，等待第一个文本片段
-      console.log('AI 开始回复')
+      console.log('AI 开始回复 (TTS)')
+      // 重置当前 AI 消息索引，准备接收新的片段
+      currentAiMessageIndex.value = null
+      isThinking.value = false
       
     } else if (message.state === 'sentence_start' && message.text) {
-      // 收到文本片段
-      // 如果还没有创建消息，现在创建并停止思考
-      if (currentAiMessageIndex.value === null) {
-        isThinking.value = false
-        
-        // 更新最后一条用户消息的技能卡片状态为完成（如果有）
-        const lastUserMessageIndex = messages.value.findLastIndex(m => m.role === 'user')
-        if (lastUserMessageIndex !== -1 && messages.value[lastUserMessageIndex].skillSteps) {
-          const thinkingStep = messages.value[lastUserMessageIndex].skillSteps.find(s => s.type === 'thinking')
-          if (thinkingStep) {
-            thinkingStep.title = '思考已完成'
-            thinkingStep.type = 'thinking-done'
-          }
-        }
-        
-        const aiMessage = {
-          role: 'ai',
-          content: '',
-          timestamp: Date.now(),
-          skillSteps: null
-        }
-        messages.value.push(aiMessage)
-        currentAiMessageIndex.value = messages.value.length - 1
+      // 收到文本片段 - 这是真正的AI回复内容
+      console.log('TTS 文本片段:', message.text)
+      
+      // 添加到语音转文字记录 - 每个片段单独显示
+      if (message.text && message.text.trim()) {
+        voiceTranscript.value.push({
+          text: message.text,
+          isUser: false,
+          timestamp: Date.now()
+        });
       }
       
-      // 添加到待输出队列
-      pendingText.value += message.text
-      
-      // 如果没有正在进行的流式输出，启动它
-      if (!streamingTimer.value) {
-        startStreaming()
+      // 为每个片段创建单独的 AI 消息
+      if (message.text && message.text.trim()) {
+        const aiMessage = {
+          role: 'ai',
+          content: message.text,
+          timestamp: Date.now(),
+          skillSteps: null,
+          saved: false // 标记是否已保存
+        }
+        messages.value.push(aiMessage)
+        console.log('✅ AI消息片段已创建，当前 messages 长度:', messages.value.length, '内容:', message.text);
+        scrollToBottom()
       }
       
     } else if (message.state === 'stop') {
-      // TTS 结束，等待流式输出完成后保存
-      isTtsComplete.value = true
+      // TTS 结束，保存所有未保存的 AI 消息片段
+      console.log('TTS 结束，准备保存所有AI消息片段');
+      
+      // 查找所有未保存的 AI 消息
+      const unsavedAiMessages = messages.value.filter(msg => msg.role === 'ai' && !msg.saved && msg.content);
+      
+      if (unsavedAiMessages.length > 0) {
+        console.log(`发现 ${unsavedAiMessages.length} 条未保存的AI消息片段`);
+        
+        // 保存每个片段
+        unsavedAiMessages.forEach((aiMessage, index) => {
+          console.log(`📝 保存AI消息片段 ${index + 1}/${unsavedAiMessages.length}，长度:`, aiMessage.content.length);
+          saveMessageToDatabase(aiMessage).then(() => {
+            aiMessage.saved = true
+            console.log(`✅ AI消息片段 ${index + 1} 已保存`);
+          }).catch(err => {
+            console.error(`❌ 保存AI消息片段 ${index + 1} 失败:`, err);
+          })
+        });
+      }
+      
+      // 重置状态
+      currentAiMessageIndex.value = null
     }
   }
 }
@@ -725,19 +779,30 @@ const pendingText = ref('')
 const streamingTimer = ref(null)
 // TTS 是否已完成
 const isTtsComplete = ref(false)
+// LLM消息完成检测定时器
+const llmCompleteTimer = ref(null)
+// 保存消息防抖定时器
+const saveDebounceTimer = ref(null)
 
 // 开始流式输出
 const startStreaming = () => {
-  if (streamingTimer.value) return
+  if (streamingTimer.value) {
+    console.log('流式输出已在进行中');
+    return;
+  }
+  
+  console.log('开始流式输出，待输出文本长度:', pendingText.value.length);
   
   streamingTimer.value = setInterval(() => {
     if (currentAiMessageIndex.value === null) {
+      console.log('AI消息索引为空，停止流式输出');
       stopStreaming()
       return
     }
     
     const message = messages.value[currentAiMessageIndex.value]
     if (!message) {
+      console.log('找不到AI消息，停止流式输出');
       stopStreaming()
       return
     }
@@ -745,22 +810,45 @@ const startStreaming = () => {
     // 如果还有待输出的文本
     if (pendingText.value.length > 0) {
       // 每次输出一个字符
-      message.content += pendingText.value[0]
+      const char = pendingText.value[0]
+      message.content += char
       pendingText.value = pendingText.value.slice(1)
       scrollToBottom()
-    } else if (isTtsComplete.value) {
-      // 没有待输出文本且 TTS 已完成，停止流式输出
-      stopStreaming()
       
-      // 保存完整消息到数据库
-      if (message.content) {
-        saveMessageToDatabase(message)
+      // 每输出10个字符打印一次日志和messages数组
+      if (message.content.length % 10 === 0) {
+        console.log('流式输出进度:', message.content.length, '字符');
+        console.log('当前messages数组:', JSON.parse(JSON.stringify(messages.value)));
+        console.log('当前AI消息内容:', message.content);
       }
       
-      // 保存对应的用户消息技能卡片信息（如果有）
-      const lastUserMessageIndex = messages.value.findLastIndex(m => m.role === 'user')
-      if (lastUserMessageIndex !== -1 && messages.value[lastUserMessageIndex].skillSteps) {
-        saveMessageToDatabase(messages.value[lastUserMessageIndex])
+      // 使用防抖保存（500ms内没有新字符则保存）
+      if (saveDebounceTimer.value) {
+        clearTimeout(saveDebounceTimer.value)
+      }
+      saveDebounceTimer.value = setTimeout(() => {
+        console.log('防抖保存AI消息:', message.content.length, '字符');
+        saveMessageToDatabase(message)
+      }, 500)
+      
+    } else if (isTtsComplete.value) {
+      // 没有待输出文本且 LLM 已完成，停止流式输出
+      console.log('流式输出完成，准备保存');
+      stopStreaming()
+      
+      // 清除防抖定时器，立即保存最终内容
+      if (saveDebounceTimer.value) {
+        clearTimeout(saveDebounceTimer.value)
+        saveDebounceTimer.value = null
+      }
+      
+      // 最终保存完整消息
+      if (message.content) {
+        console.log('最终保存AI消息，总长度:', message.content.length, '字符');
+        console.log('消息内容:', message.content);
+        saveMessageToDatabase(message)
+      } else {
+        console.warn('AI消息内容为空，不保存');
       }
       
       // 重置状态
@@ -776,18 +864,58 @@ const stopStreaming = () => {
     clearInterval(streamingTimer.value)
     streamingTimer.value = null
   }
+  
+  // 清理LLM完成检测定时器
+  if (llmCompleteTimer.value) {
+    clearTimeout(llmCompleteTimer.value)
+    llmCompleteTimer.value = null
+  }
+  
+  // 清理保存防抖定时器
+  if (saveDebounceTimer.value) {
+    clearTimeout(saveDebounceTimer.value)
+    saveDebounceTimer.value = null
+  }
+  
   isStreaming.value = false
 }
 
 // 保存消息到数据库
 const saveMessageToDatabase = async (message) => {
   try {
-    // 如果没有会话ID，使用临时ID（等待 Dify 返回真实ID后会更新）
-    const currentConvId = conversationId.value || 'temp_' + Date.now()
+    // 如果没有会话ID，创建新会话或使用临时ID
+    if (!conversationId.value) {
+      // 尝试创建新会话
+      try {
+        const newConv = await createNewConversation()
+        if (newConv && newConv.conversationId) {
+          conversationId.value = newConv.conversationId
+          localStorage.setItem('current_conversation_id', conversationId.value)
+          console.log('✅ 创建新会话:', conversationId.value)
+        } else {
+          // 如果创建失败，使用临时ID
+          conversationId.value = 'temp_' + Date.now()
+          localStorage.setItem('current_conversation_id', conversationId.value)
+          console.log('⚠️ 使用临时会话ID:', conversationId.value)
+        }
+      } catch (error) {
+        console.error('创建新会话失败:', error)
+        conversationId.value = 'temp_' + Date.now()
+        localStorage.setItem('current_conversation_id', conversationId.value)
+        console.log('⚠️ 使用临时会话ID:', conversationId.value)
+      }
+    }
+    
+    console.log('准备保存消息到数据库:', {
+      conversationId: conversationId.value,
+      role: message.role,
+      contentLength: message.content.length,
+      content: message.content.substring(0, 50) + '...'
+    });
     
     // 准备保存的数据，包含技能卡片信息
     const messageData = {
-      conversationId: currentConvId,
+      conversationId: conversationId.value,
       role: message.role,
       content: message.content,
       timestamp: message.timestamp
@@ -800,9 +928,9 @@ const saveMessageToDatabase = async (message) => {
     
     await saveWebSocketMessage(messageData)
     
-    console.log('消息已保存到数据库', message.skillSteps ? '(包含技能卡片)' : '')
+    console.log('✅ 消息已成功保存到数据库', message.skillSteps ? '(包含技能卡片)' : '')
   } catch (error) {
-    console.error('保存消息失败:', error)
+    console.error('❌ 保存消息失败:', error)
     // 不影响用户体验，静默失败
   }
 }
@@ -1015,6 +1143,9 @@ const handleSend = async () => {
     const token = localStorage.getItem('token')
     const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
     const endpoint = `${baseURL}/ai/chat/client/stream`
+    
+    console.log('发送请求到:', endpoint)
+    console.log('Token:', token ? '已设置' : '未设置')
     
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -1270,24 +1401,40 @@ const handlePhoneCall = async (event) => {
   }
   const rect = button.getBoundingClientRect()
   
-  // 检查 WebSocket 是否已连接
-  if (!wsConnected.value) {
-    // 尝试连接 WebSocket
-    try {
-      await connectWebSocket()
-    } catch (error) {
-      console.error('WebSocket 连接失败:', error)
+  // 获取 WebSocket 实例（使用全局 wsInstance）
+  try {
+    // 如果已有实例且已连接，先断开
+    if (wsInstance && wsConnected.value) {
+      console.log('断开旧的 WebSocket 连接');
+      wsInstance.disconnect();
+      wsConnected.value = false;
     }
     
-    // 如果仍然未连接，提示用户
-    if (!wsConnected.value) {
-      showToast('语音通话功能暂不可用，请使用文字聊天')
-      return
-    }
+    // 获取新的实例
+    wsInstance = await getWsInstance();
+  } catch (error) {
+    console.error('获取 WebSocket 实例失败:', error)
+    showToast('语音通话功能暂不可用，请检查设置')
+    return
+  }
+  
+  // 连接 WebSocket
+  try {
+    await connectWebSocket()
+  } catch (error) {
+    console.error('WebSocket 连接失败:', error)
+  }
+  
+  // 如果仍然未连接，提示用户
+  if (!wsConnected.value) {
+    showToast('语音通话功能暂不可用，请使用文字聊天')
+    return
   }
 
   // 启用语音模式
-  ws.setVoiceMode(true)
+  isVoiceMode.value = true
+  console.log('✅ 语音模式已启用，isVoiceMode:', isVoiceMode.value);
+  wsInstance.setVoiceMode(true)
 
   // 使用之前保存的按钮位置
   const centerX = rect.left + rect.width / 2
@@ -1334,11 +1481,8 @@ const handlePhoneCall = async (event) => {
           
           console.log(`传递 ${historyForXiaozhi.length} 条历史消息给 xiaozhi`)
           
-          // 开始录音会话（发送 listen start 消息，附带历史上下文）
-          ws.startAudioSession(historyForXiaozhi)
-          
-          // 启动音频录制器
-          const success = await ws.startRecording()
+          // 开始录音会话（发送历史上下文并启动录音）
+          const success = await wsInstance.startAudioSession(historyForXiaozhi)
           
           if (success) {
             // 更新状态为已连接
@@ -1359,13 +1503,87 @@ const handlePhoneCall = async (event) => {
 
 // 关闭电话通话
 const handleClosePhoneCall = () => {
-  // 禁用语音模式
-  ws.setVoiceMode(false)
+  console.log('handleClosePhoneCall 被调用');
   
+  // 如果录音刚开始（少于1秒），忽略关闭请求
+  if (callStatus.value === 'calling') {
+    console.log('通话正在建立中，忽略关闭请求');
+    return;
+  }
+  
+  // 停止录音
+  if (wsInstance) {
+    wsInstance.stopAudioSession();
+    // 停止音频播放
+    if (wsInstance.audioPlayer) {
+      wsInstance.audioPlayer.clearAllAudio();
+    }
+    
+    // 断开 WebSocket 连接
+    console.log('断开 WebSocket 连接');
+    wsInstance.disconnect();
+    wsConnected.value = false;
+  }
+  
+  // 禁用语音模式
+  isVoiceMode.value = false
+  
+  // 清理所有定时器
   if (callStatusTimer) {
     clearInterval(callStatusTimer)
     callStatusTimer = null
   }
+  
+  if (streamingTimer.value) {
+    clearInterval(streamingTimer.value)
+    streamingTimer.value = null
+  }
+  
+  if (llmCompleteTimer.value) {
+    clearTimeout(llmCompleteTimer.value)
+    llmCompleteTimer.value = null
+  }
+  
+  if (saveDebounceTimer.value) {
+    clearTimeout(saveDebounceTimer.value)
+    saveDebounceTimer.value = null
+  }
+  
+  // 保存所有未保存的消息
+  console.log('检查未保存的消息...');
+  let unsavedCount = 0;
+  messages.value.forEach(msg => {
+    if (!msg.saved && msg.content && msg.content.trim()) {
+      unsavedCount++;
+      console.log(`📝 保存未保存的${msg.role}消息:`, msg.content.substring(0, 50) + '...');
+      saveMessageToDatabase(msg).then(() => {
+        msg.saved = true;
+        console.log(`✅ ${msg.role}消息已保存`);
+      }).catch(err => {
+        console.error(`❌ 保存${msg.role}消息失败:`, err);
+      });
+    }
+  });
+  
+  if (unsavedCount > 0) {
+    console.log(`发现 ${unsavedCount} 条未保存的消息，正在保存...`);
+  } else {
+    console.log('所有消息已保存');
+  }
+  
+  // 重置当前AI消息索引
+  currentAiMessageIndex.value = null
+  
+  // 清空待输出文本
+  pendingText.value = ''
+  isTtsComplete.value = false
+  
+  // 清空语音转文字记录（通话界面的临时显示）
+  voiceTranscript.value = []
+  
+  // 打印当前messages数组，确认聊天记录
+  console.log('挂断电话后的messages数组:', JSON.parse(JSON.stringify(messages.value)));
+  console.log('messages数组长度:', messages.value.length);
   
   // 先隐藏通话界面内容
   showPhoneCall.value = false
@@ -1379,17 +1597,23 @@ const handleClosePhoneCall = () => {
       phoneCallAnimating.value = false
       callStatus.value = 'calling'
       buttonPosition.value = { x: 0, y: 0 }
+      
+      // 滚动到底部，显示新添加的消息
+      scrollToBottom()
+      console.log('已滚动到底部，显示聊天记录');
     }, 500) // 等待收缩动画完成（与扩展动画时间相同）
   }, 100)
 }
 
 // 挂断电话
 const handleHangup = () => {
+  if (!wsInstance) return
+  
   // 停止录音
-  ws.stopRecording()
+  wsInstance.stopRecording()
   
   // 停止录音会话
-  ws.stopAudioSession()
+  wsInstance.stopAudioSession()
   
   if (callStatusTimer) {
     clearInterval(callStatusTimer)
@@ -1537,6 +1761,10 @@ const handleSkillsEvent = () => {
   showSkillManager.value = true
 }
 
+const handleSettingsEvent = () => {
+  showSettingsDialog.value = true
+}
+
 // 组件卸载时清理
 onUnmounted(() => {
   // 停止流式输出
@@ -1545,11 +1773,11 @@ onUnmounted(() => {
   // 停止技能动画
   stopSkillAnimation()
   
-  // 停止录音
-  ws.stopRecording()
-  
-  // 断开 WebSocket
-  ws.disconnect()
+  // 停止录音和断开连接
+  if (wsInstance) {
+    wsInstance.stopRecording()
+    wsInstance.disconnect()
+  }
   
   if (callStatusTimer) {
     clearInterval(callStatusTimer)
@@ -1558,6 +1786,7 @@ onUnmounted(() => {
   window.removeEventListener('ai-open-history', handleHistoryEvent)
   window.removeEventListener('ai-new-chat', handleNewChatEvent)
   window.removeEventListener('ai-open-skills', handleSkillsEvent)
+  window.removeEventListener('ai-open-settings', handleSettingsEvent)
 })
 
 onMounted(async () => {
@@ -1575,13 +1804,13 @@ onMounted(async () => {
     console.error('加载聊天记录失败:', error)
   }
   
-  // 不再自动连接 WebSocket，只在语音通话时按需连接
-  // await connectWebSocket()
+  // 不再预加载 WebSocket，改为按需连接（点击通话按钮时）
   
   // 监听来自Layout的事件
   window.addEventListener('ai-open-history', handleHistoryEvent)
   window.addEventListener('ai-new-chat', handleNewChatEvent)
   window.addEventListener('ai-open-skills', handleSkillsEvent)
+  window.addEventListener('ai-open-settings', handleSettingsEvent)
   
   scrollToBottom()
 })
@@ -2741,6 +2970,64 @@ onMounted(async () => {
   50% {
     opacity: 0.3;
   }
+}
+
+/* 语音转文字显示区域 */
+.voice-transcript {
+  width: 100%;
+  max-width: 500px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transcript-item {
+  display: flex;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.transcript-item.user {
+  justify-content: flex-end;
+}
+
+.transcript-item.ai {
+  justify-content: flex-start;
+}
+
+.transcript-text {
+  max-width: 75%;
+  padding: 8px 12px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.transcript-item.user .transcript-text {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 16px 16px 2px 16px;
+}
+
+.transcript-item.ai .transcript-text {
+  background: rgba(255, 255, 255, 0.95);
+  color: #333;
+  border-radius: 16px 16px 16px 2px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 /* 通话控制按钮 */

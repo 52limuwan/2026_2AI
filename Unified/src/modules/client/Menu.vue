@@ -161,6 +161,25 @@
       <h3>送餐清单</h3>
       
       <div class="cart-section" v-if="cart.length">
+        <!-- 营养汇总 -->
+        <div class="nutrition-total-card">
+          <div class="nutrition-total-title">营养汇总</div>
+          <div class="nutrition-total-items">
+            <div class="nutrition-total-item">
+              <span class="nutrition-label">热量</span>
+              <span class="nutrition-value">{{ totalNutrition.calories.toFixed(0) }} kcal</span>
+            </div>
+            <div class="nutrition-total-item">
+              <span class="nutrition-label">蛋白质</span>
+              <span class="nutrition-value">{{ totalNutrition.protein.toFixed(1) }}g</span>
+            </div>
+            <div class="nutrition-total-item">
+              <span class="nutrition-label">纤维</span>
+              <span class="nutrition-value">{{ totalNutrition.fiber.toFixed(1) }}g</span>
+            </div>
+          </div>
+        </div>
+        
         <div class="card-list">
           <div class="cart-item" v-for="item in cart" :key="item.id">
             <div class="cart-info">
@@ -171,9 +190,20 @@
                 alt="" 
                 class="lazy-image"
               />
-              <div>
+              <div class="cart-item-details">
                 <strong>{{ item.name }}</strong>
                 <p class="muted" v-if="item.description">{{ item.description }}</p>
+                <div class="cart-nutrition-info" v-if="item.nutrition">
+                  <span class="cart-nutrition-tag" v-if="item.nutrition.calories">
+                    {{ item.nutrition.calories }} kcal
+                  </span>
+                  <span class="cart-nutrition-tag" v-if="item.nutrition.protein">
+                    蛋白质 {{ item.nutrition.protein }}g
+                  </span>
+                  <span class="cart-nutrition-tag" v-if="item.nutrition.fiber">
+                    纤维 {{ item.nutrition.fiber }}g
+                  </span>
+                </div>
               </div>
             </div>
             <div class="cart-actions">
@@ -211,10 +241,10 @@
 
       <div class="checkout-actions">
         <div class="checkout-summary">
-          <div class="muted">共 {{ cart.length }} 道 · 合计</div>
+          <span class="muted">共 {{ cart.length }} 道</span>
           <strong>￥{{ total }}</strong>
         </div>
-        <button class="primary-btn" :disabled="!cart.length || !orderType || (orderType === 'delivery' && !savedAddress)" @click="submitOrder">确认下单</button>
+        <button class="primary-btn checkout-btn" :disabled="!cart.length || !orderType || (orderType === 'delivery' && !savedAddress)" @click="submitOrder">下单</button>
       </div>
     </div>
   </BottomSheet>
@@ -313,6 +343,18 @@ onUnmounted(() => {
 
 const total = computed(() => cart.value.reduce((sum, item) => sum + item.price * item.quantity, 0).toFixed(2))
 const displayList = computed(() => dishes.value)
+
+// 计算购物车总营养信息
+const totalNutrition = computed(() => {
+  return cart.value.reduce((total, item) => {
+    if (item.nutrition) {
+      total.calories += (item.nutrition.calories || 0) * item.quantity
+      total.protein += (item.nutrition.protein || 0) * item.quantity
+      total.fiber += (item.nutrition.fiber || 0) * item.quantity
+    }
+    return total
+  }, { calories: 0, protein: 0, fiber: 0 })
+})
 
 const addToCart = (dish) => {
   const exist = cart.value.find((c) => c.id === dish.id)
@@ -1555,12 +1597,45 @@ const addRecommendedToCart = (dish) => {
   display: flex;
   gap: 10px;
   align-items: flex-start;
+  flex: 1;
 }
 .cart-info img {
   width: 72px;
   height: 72px;
   object-fit: cover;
   border-radius: 10px;
+  flex-shrink: 0;
+}
+.cart-item-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.cart-item-details strong {
+  font-size: 15px;
+  line-height: 1.3;
+}
+.cart-item-details .muted {
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0;
+}
+.cart-nutrition-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.cart-nutrition-tag {
+  font-size: 11px;
+  color: var(--accent-strong);
+  background: rgba(31, 156, 122, 0.1);
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
 }
 .cart-actions {
   display: flex;
@@ -1656,6 +1731,57 @@ const addRecommendedToCart = (dish) => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+}
+
+.checkout-summary .muted {
+  white-space: nowrap;
+}
+
+.checkout-summary strong {
+  white-space: nowrap;
+}
+
+.checkout-btn {
+  min-width: 80px;
+  padding: 10px 16px;
+}
+
+.nutrition-total-card {
+  background: linear-gradient(135deg, rgba(31, 156, 122, 0.08), rgba(19, 120, 92, 0.05));
+  border: 1px solid rgba(31, 156, 122, 0.15);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.nutrition-total-title {
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.nutrition-total-items {
+  display: flex;
+  gap: 16px;
+}
+
+.nutrition-total-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nutrition-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.nutrition-value {
+  font-size: 14px;
+  font-weight: var(--fw-semibold);
+  color: var(--accent-strong);
 }
 
 .message {

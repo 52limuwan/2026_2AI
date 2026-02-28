@@ -208,6 +208,9 @@
 
   <!-- Skill管理器 -->
   <SkillManager v-model="showSkillManager" />
+  
+  <!-- 设置对话框 -->
+  <SettingsDialog v-model="showSettingsDialog" />
 </template>
 
 <script setup>
@@ -218,6 +221,7 @@ import { useUserStore } from '../../stores/user'
 import { showToast } from '../../utils/toast'
 import BottomSheet from '../../components/BottomSheet.vue'
 import SkillManager from '../../components/SkillManager.vue'
+import SettingsDialog from '../../components/SettingsDialog.vue'
 import { getXiaozhiWebSocket, getDeviceConfig, getOtaUrl } from '../../utils/xiaozhi-websocket'
 
 const userStore = useUserStore()
@@ -232,6 +236,7 @@ const GOV_OTA_URL = getOtaUrl('gov')
 
 // Skill管理器状态
 const showSkillManager = ref(false)
+const showSettingsDialog = ref(false)
 
 const inputText = ref('')
 const messagesRef = ref(null)
@@ -621,13 +626,20 @@ const handleWebSocketMessage = (message) => {
       const userMessage = {
         role: 'user',
         content: message.text,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        saved: false
       }
       messages.value.push(userMessage)
       scrollToBottom()
       
-      // 保存用户消息到数据库
-      saveMessageToDatabase(userMessage)
+      // 立即保存用户消息到数据库
+      console.log('📝 保存用户消息 (gov):', message.text);
+      saveMessageToDatabase(userMessage).then(() => {
+        userMessage.saved = true
+        console.log('✅ 用户消息已保存 (gov)');
+      }).catch(err => {
+        console.error('❌ 保存用户消息失败 (gov):', err);
+      })
     }
     
   } else if (message.type === 'tts') {
@@ -645,23 +657,39 @@ const handleWebSocketMessage = (message) => {
         const aiMessage = {
           role: 'ai',
           content: '',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          saved: false
         }
         messages.value.push(aiMessage)
         currentAiMessageIndex.value = messages.value.length - 1
       }
       
-      // 添加到待输出队列
-      pendingText.value += message.text
-      
-      // 如果没有正在进行的流式输出，启动它
-      if (!streamingTimer.value) {
-        startStreaming()
+      // 直接累积文本到消息内容
+      const aiMessage = messages.value[currentAiMessageIndex.value]
+      if (aiMessage) {
+        aiMessage.content += message.text
+        scrollToBottom()
       }
       
     } else if (message.state === 'stop') {
-      // TTS 结束，等待流式输出完成后保存
-      isTtsComplete.value = true
+      // TTS 结束，保存完整的 AI 消息
+      console.log('TTS 结束，准备保存AI消息 (gov)');
+      
+      if (currentAiMessageIndex.value !== null) {
+        const aiMessage = messages.value[currentAiMessageIndex.value]
+        if (aiMessage && aiMessage.content && !aiMessage.saved) {
+          console.log('📝 保存AI消息 (gov)，长度:', aiMessage.content.length);
+          saveMessageToDatabase(aiMessage).then(() => {
+            aiMessage.saved = true
+            console.log('✅ AI消息已保存 (gov)');
+          }).catch(err => {
+            console.error('❌ 保存AI消息失败 (gov):', err);
+          })
+        }
+        
+        // 重置状态
+        currentAiMessageIndex.value = null
+      }
     }
   }
 }
@@ -1077,13 +1105,52 @@ const handlePhoneCall = async (event) => {
 
 // 关闭电话通话
 const handleClosePhoneCall = () => {
+  console.log('handleClosePhoneCall 被调用 (gov)');
+  
+  // 停止录音
+  if (ws) {
+    ws.stopAudioSession();
+    // 停止音频播放
+    if (ws.audioPlayer) {
+      ws.audioPlayer.clearAllAudio();
+    }
+    
+    // 断开 WebSocket 连接
+    console.log('断开 WebSocket 连接 (gov)');
+    ws.disconnect();
+    wsConnected.value = false;
+  }
+  
   // 禁用语音模式
-  ws.setVoiceMode(false)
+  isVoiceMode.value = false;
   
   if (callStatusTimer) {
     clearInterval(callStatusTimer)
     callStatusTimer = null
   }
+  
+  // 保存所有未保存的消息
+  console.log('检查未保存的消息 (gov)...');
+  let unsavedCount = 0;
+  messages.value.forEach(msg => {
+    if (!msg.saved && msg.content && msg.content.trim()) {
+      unsavedCount++;
+      console.log(`📝 保存未保存的${msg.role}消息 (gov):`, msg.content.substring(0, 50) + '...');
+      saveMessageToDatabase(msg).then(() => {
+        msg.saved = true;
+        console.log(`✅ ${msg.role}消息已保存 (gov)`);
+      }).catch(err => {
+        console.error(`❌ 保存${msg.role}消息失败 (gov):`, err);
+      });
+    }
+  });
+  
+  if (unsavedCount > 0) {
+    console.log(`发现 ${unsavedCount} 条未保存的消息 (gov)，正在保存...`);
+  }
+  
+  // 重置状态
+  currentAiMessageIndex.value = null
   
   // 先隐藏通话界面内容
   showPhoneCall.value = false
@@ -1249,6 +1316,10 @@ const handleSkillsEvent = () => {
   showSkillManager.value = true
 }
 
+const handleSettingsEvent = () => {
+  showSettingsDialog.value = true
+}
+
 // 组件卸载时清理
 onUnmounted(() => {
   // 停止流式输出
@@ -1270,6 +1341,7 @@ onUnmounted(() => {
   window.removeEventListener('ai-open-history', handleHistoryEvent)
   window.removeEventListener('ai-new-chat', handleNewChatEvent)
   window.removeEventListener('ai-open-skills', handleSkillsEvent)
+  window.removeEventListener('ai-open-settings', handleSettingsEvent)
 })
 
 onMounted(async () => {
@@ -1294,6 +1366,7 @@ onMounted(async () => {
   window.addEventListener('ai-open-history', handleHistoryEvent)
   window.addEventListener('ai-new-chat', handleNewChatEvent)
   window.addEventListener('ai-open-skills', handleSkillsEvent)
+  window.addEventListener('ai-open-settings', handleSettingsEvent)
   
   scrollToBottom()
 })

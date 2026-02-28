@@ -12,6 +12,7 @@
       @history="openHistoryDialog"
       @newChat="handleNewChat"
       @skills="openSkillsManager"
+      @settings="openSettings"
     />
 
     <div v-if="showAvatarMenu" class="avatar-menu" @click.self="showAvatarMenu = false">
@@ -167,6 +168,11 @@ const handleNewChat = () => {
 const openSkillsManager = () => {
   // 通过事件总线传递给AI助手页面
   window.dispatchEvent(new CustomEvent('ai-open-skills'))
+}
+
+const openSettings = () => {
+  // 通过事件总线传递给AI助手页面
+  window.dispatchEvent(new CustomEvent('ai-open-settings'))
 }
 
 onMounted(() => {

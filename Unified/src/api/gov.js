@@ -7,3 +7,7 @@ export const generateAISuggestion = (clientId) => http.post('/gov/suggestions/ge
 export const getSummary = () => http.get('/gov/reports/summary')
 export const getClientGuardians = (clientId) => http.get(`/gov/clients/${clientId}/guardians`)
 export const getGovCommunities = () => http.get('/gov/communities')
+
+// 用户设置相关API
+export const getUserSettings = () => http.get('/gov/settings')
+export const updateUserSettings = (payload) => http.put('/gov/settings', payload)

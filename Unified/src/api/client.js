@@ -32,3 +32,7 @@ export const getAiDietReportById = (id) => http.get(`/ai/diet-reports/${id}`)
 
 // AI 智能推荐API
 export const getSmartRecommendation = (payload) => http.post('/ai/smart-recommend', payload)
+
+// 用户设置相关API
+export const getUserSettings = () => http.get('/client/settings')
+export const updateUserSettings = (payload) => http.put('/client/settings', payload)

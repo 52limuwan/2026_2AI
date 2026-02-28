@@ -1258,4 +1258,62 @@ router.get('/reports/summary', async (req, res) => {
   }
 });
 
+// 获取用户设置
+router.get('/settings', async (req, res) => {
+  try {
+    const user = await db.get(
+      'SELECT preferences FROM users WHERE id = :user_id',
+      { user_id: req.user.id }
+    );
+    
+    const preferences = user?.preferences ? JSON.parse(user.preferences) : {};
+    const settings = {
+      ws_url: preferences.ws_url || '',
+      ...preferences
+    };
+    
+    return success(res, { settings });
+  } catch (error) {
+    console.error('获取用户设置失败:', error);
+    return failure(res, '获取设置失败');
+  }
+});
+
+// 更新用户设置
+router.put('/settings', async (req, res) => {
+  try {
+    const { ws_url, ...otherSettings } = req.body;
+    
+    // 获取现有设置
+    const user = await db.get(
+      'SELECT preferences FROM users WHERE id = :user_id',
+      { user_id: req.user.id }
+    );
+    
+    const preferences = user?.preferences ? JSON.parse(user.preferences) : {};
+    
+    // 更新设置
+    if (ws_url !== undefined) {
+      preferences.ws_url = ws_url;
+    }
+    
+    // 合并其他设置
+    Object.assign(preferences, otherSettings);
+    
+    // 保存到数据库
+    await db.run(
+      'UPDATE users SET preferences = :preferences, updated_at = CURRENT_TIMESTAMP WHERE id = :user_id',
+      { 
+        preferences: JSON.stringify(preferences), 
+        user_id: req.user.id 
+      }
+    );
+    
+    return success(res, { settings: preferences }, '设置已保存');
+  } catch (error) {
+    console.error('更新用户设置失败:', error);
+    return failure(res, '保存设置失败');
+  }
+});
+
 module.exports = router;
