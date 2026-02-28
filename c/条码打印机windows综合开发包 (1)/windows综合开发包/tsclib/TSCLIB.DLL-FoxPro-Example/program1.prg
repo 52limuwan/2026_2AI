@@ -1,0 +1,24 @@
+declare openport in tsclib.dll string
+declare closeport in tsclib.dll
+declare sendcommand in tsclib.dll  string
+declare setup in tsclib.dll  string,string,string,string,string,string,string
+declare downloadpcx in tsclib.dll string, string
+declare barcode in tsclib.dll string,string,string,string,string,string,string,string,string
+declare printerfont in tsclib.dll string,string,string,string,string,string,string
+declare clearbuffer in tsclib.dll
+declare printlabel in tsclib.dll string,string
+declare formfeed in tsclib.dll 
+declare nobackfeed in tsclib.dll
+declare windowsfont in tsclib.dll integer,integer,integer,integer,integer,integer,string,string
+
+openport("TSC TTP-245")
+setup("100","90","3","10","0","0","0")
+clearbuffer()
+sendcommand("SET TEAR OFF")
+downloadpcx("UL.PCX", "UL.PCX")
+windowsfont(90,380,22,0,0,0,"Arial" , "ARIAL FONT")
+sendcommand("PUTPCX 200,350,"+CHR(34)+"UL.PCX"+CHR(34))
+barcode("90","200","93","60","1","0","2","5","123456")
+printlabel("1", "1")
+
+closeport()

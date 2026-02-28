@@ -1,0 +1,20 @@
+LIBRARY TSCLIB
+
+EXPORTS
+      
+	downloadpcx		=_downloadpcx@8
+	barcode			=_barcode@36
+	clearbuffer		=_clearbuffer@0
+	openport		=_openport@4
+	closeport		=_closeport@0
+	downloadpcx		=_downloadpcx@8
+	formfeed		=_formfeed@0
+	isready			=_isready@0
+	nobackfeed		=_nobackfeed@0
+	printerfont		=_printerfont@28
+	printlabel		=_printlabel@8
+	sendcommand		=_sendcommand@4
+	setup			=_setup@28
+	windowsfont		=_windowsfont@32
+	about			=_about@0
+	

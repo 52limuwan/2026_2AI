@@ -1,0 +1,48 @@
+C:\Users\Ernest\Dropbox\WinCE & C#\C# TEST\Try Dll CE_Test_20120708\SimpleDemoDll\SimpleDemoDll\bin\Release\SimpleDemoDll.exe
+C:\Users\Ernest\Dropbox\WinCE & C#\C# TEST\Try Dll CE_Test_20120708\SimpleDemoDll\SimpleDemoDll\bin\Release\SimpleDemoDll.pdb
+C:\Users\Ernest\Dropbox\WinCE & C#\C# TEST\Try Dll CE_Test_20120708\SimpleDemoDll\SimpleDemoDll\bin\Release\MobilePrinter.dll
+C:\Users\Ernest\Dropbox\WinCE & C#\C# TEST\Try Dll CE_Test_20120708\SimpleDemoDll\SimpleDemoDll\bin\Release\MobilePrinter.pdb
+C:\Users\Ernest\Dropbox\WinCE & C#\C# TEST\Try Dll CE_Test_20120708\SimpleDemoDll\SimpleDemoDll\obj\Release\ResolveAssemblyReference.cache
+C:\Users\Ernest\Dropbox\WinCE & C#\C# TEST\Try Dll CE_Test_20120708\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.Form1.resources
+C:\Users\Ernest\Dropbox\WinCE & C#\C# TEST\Try Dll CE_Test_20120708\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.Properties.Resources.resources
+C:\Users\Ernest\Dropbox\WinCE & C#\C# TEST\Try Dll CE_Test_20120708\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.csproj.GenerateResource.Cache
+C:\Users\Ernest\Dropbox\WinCE & C#\C# TEST\Try Dll CE_Test_20120708\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.exe
+C:\Users\Ernest\Dropbox\WinCE & C#\C# TEST\Try Dll CE_Test_20120708\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.pdb
+C:\Users\Ernest\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012\SimpleDemoDll\SimpleDemoDll\bin\Release\SimpleDemoDll.exe
+C:\Users\Ernest\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012\SimpleDemoDll\SimpleDemoDll\bin\Release\SimpleDemoDll.pdb
+C:\Users\Ernest\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012\SimpleDemoDll\SimpleDemoDll\bin\Release\MobilePrinter.dll
+C:\Users\Ernest\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012\SimpleDemoDll\SimpleDemoDll\bin\Release\MobilePrinter.pdb
+C:\Users\Ernest\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012\SimpleDemoDll\SimpleDemoDll\obj\Release\ResolveAssemblyReference.cache
+C:\Users\Ernest\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.Form1.resources
+C:\Users\Ernest\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.Properties.Resources.resources
+C:\Users\Ernest\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.csproj.GenerateResource.Cache
+C:\Users\Ernest\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.exe
+C:\Users\Ernest\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.pdb
+D:\Dropbox\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012_發行用\新版 DLL_尚未發行版\SimpleDemoDll\SimpleDemoDll\obj\Release\ResolveAssemblyReference.cache
+D:\Dropbox\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012_發行用\新版 DLL_尚未發行版\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.Form1.resources
+D:\Dropbox\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012_發行用\新版 DLL_尚未發行版\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.Properties.Resources.resources
+D:\Dropbox\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012_發行用\新版 DLL_尚未發行版\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.csproj.GenerateResource.Cache
+D:\Dropbox\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012_發行用\新版 DLL_尚未發行版\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.exe
+D:\Dropbox\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012_發行用\新版 DLL_尚未發行版\SimpleDemoDll\SimpleDemoDll\bin\Release\SimpleDemoDll.exe
+D:\Dropbox\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012_發行用\新版 DLL_尚未發行版\SimpleDemoDll\SimpleDemoDll\bin\Release\SimpleDemoDll.pdb
+D:\Dropbox\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012_發行用\新版 DLL_尚未發行版\SimpleDemoDll\SimpleDemoDll\bin\Release\MobilePrinter.pdb
+D:\Dropbox\Dropbox\WinCE & C#_20121023\C# TEST\Try Dll CE_Test_20121012_發行用\新版 DLL_尚未發行版\SimpleDemoDll\SimpleDemoDll\obj\Release\SimpleDemoDll.pdb
+C:\Documents and Settings\TSCAE\桌面\TscWinCESample_6.0pro_6.5pro\SimpleDemoDll-For V1.00\SimpleDemoDll\bin\Release\SimpleDemoDll.exe
+C:\Documents and Settings\TSCAE\桌面\TscWinCESample_6.0pro_6.5pro\SimpleDemoDll-For V1.00\SimpleDemoDll\bin\Release\SimpleDemoDll.pdb
+C:\Documents and Settings\TSCAE\桌面\TscWinCESample_6.0pro_6.5pro\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\ResolveAssemblyReference.cache
+C:\Documents and Settings\TSCAE\桌面\TscWinCESample_6.0pro_6.5pro\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\SimpleDemoDll.Form1.resources
+C:\Documents and Settings\TSCAE\桌面\TscWinCESample_6.0pro_6.5pro\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\SimpleDemoDll.Properties.Resources.resources
+C:\Documents and Settings\TSCAE\桌面\TscWinCESample_6.0pro_6.5pro\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\SimpleDemoDll.csproj.GenerateResource.Cache
+C:\Documents and Settings\TSCAE\桌面\TscWinCESample_6.0pro_6.5pro\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\SimpleDemoDll.exe
+C:\Documents and Settings\TSCAE\桌面\TscWinCESample_6.0pro_6.5pro\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\SimpleDemoDll.pdb
+C:\Documents and Settings\TSCAE\桌面\TscWinCESample_6.0pro_6.5pro\SimpleDemoDll-For V1.00\SimpleDemoDll\bin\Release\MobilePrinter.pdb
+C:\Users\muta_huang\Desktop\SimpleDemoDll-For V1.00\SimpleDemoDll\bin\Release\SimpleDemoDll.exe
+C:\Users\muta_huang\Desktop\SimpleDemoDll-For V1.00\SimpleDemoDll\bin\Release\SimpleDemoDll.pdb
+C:\Users\muta_huang\Desktop\SimpleDemoDll-For V1.00\SimpleDemoDll\bin\Release\WinCESDK.dll
+C:\Users\muta_huang\Desktop\SimpleDemoDll-For V1.00\SimpleDemoDll\bin\Release\WinCESDK.pdb
+C:\Users\muta_huang\Desktop\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\ResolveAssemblyReference.cache
+C:\Users\muta_huang\Desktop\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\SimpleDemoDll.Form1.resources
+C:\Users\muta_huang\Desktop\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\SimpleDemoDll.Properties.Resources.resources
+C:\Users\muta_huang\Desktop\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\SimpleDemoDll.csproj.GenerateResource.Cache
+C:\Users\muta_huang\Desktop\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\SimpleDemoDll.exe
+C:\Users\muta_huang\Desktop\SimpleDemoDll-For V1.00\SimpleDemoDll\obj\Release\SimpleDemoDll.pdb

@@ -13,8 +13,8 @@ import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
-# 添加打印库路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../c/SimplePrinter'))
+# 添加打印库路径（当前目录）
+sys.path.insert(0, os.path.dirname(__file__))
 
 from label_printer_dll import LabelPrinterDLL, LabelData, TextElement, BoxElement, ImageElement
 

@@ -1,0 +1,63 @@
+unit Unit1;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
+  StdCtrls;
+
+type
+  TForm1 = class(TForm)
+    Button1: TButton;
+    procedure Button1Click(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  Form1: TForm1;
+
+implementation
+
+{$R *.DFM}
+
+procedure openport(PrinterName:pchar);stdcall;far; external 'e:\other\dll-try\tsclib.dll';
+procedure closeport; external 'e:\other\dll-try\tsclib.dll';
+procedure sendcommand(Command:pchar);stdcall;far;external 'e:\other\dll-try\tsclib.dll';
+procedure setup(LabelWidth, LabelHeight, Speed, Density, Sensor, Vertical, Offset:pchar);stdcall; far; external 'e:\other\dll-try\tsclib.dll';
+procedure downloadpcx(Filename,ImageName:pchar);stdcall;far;external 'e:\other\dll-try\tsclib.dll';
+procedure barcode(X, Y, CodeType, Height, Readable, Rotation, Narrow, Wide, Code :pchar); stdcall; far; external 'e:\other\dll-try\tsclib.dll';
+procedure printerfont(X, Y, FontName, Rotation, Xmul, Ymul, Content:pchar);stdcall;far; external 'e:\other\dll-try\tsclib.dll';
+procedure clearbuffer; external 'e:\other\dll-try\tsclib.dll';
+procedure printlabel(NumberOfSet, NumberOfCopoy:pchar);stdcall; far;external 'e:\other\dll-try\tsclib.dll';
+procedure formfeed;external 'e:\other\dll-try\tsclib.dll';
+procedure nobackfeed; external 'e:\other\dll-try\tsclib.dll';
+procedure windowsfont (X, Y, FontHeight, Rotation, FontStyle, FontUnderline : integer; FaceName, TextContect:pchar);stdcall;far;external 'e:\other\dll-try\tsclib.dll';
+
+procedure TForm1.Button1Click(Sender: TObject);
+var
+  i: Integer;
+
+begin
+
+openport('TSC Clever TTP-342M');
+        for i:=1 to 2 do
+         begin
+          clearbuffer;
+          sendcommand('DIRECTION 1');
+          windowsfont(5, 115, 30, 0, 2, 0, '新細明體', pchar('財產名稱：印表機'));
+          windowsfont(5, 150, 30, 0, 2, 0, '新細明體', pchar('使用單位：教務處'));
+          windowsfont(5, 190, 30, 0, 2, 0, '新細明體', pchar('登帳日：92/08'));
+          windowsfont(5, 255, 30, 0, 2, 0, '新細明體', pchar('最低耐用年限：5 年'));
+          windowsfont(5, 290, 30, 0, 2, 0, '新細明體', pchar('財產編號：3140302001-2038'));
+          barcode('50', '335', '39', '64', '1', '0', '2', '4', pchar('3140302001-2038'));
+          printlabel('1', '1');
+        end;
+          closeport;
+
+
+end;
+
+end.

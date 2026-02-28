@@ -1,0 +1,6 @@
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0471", MODE="0666"
+SUBSYSTEM=="usb_device", ATTRS{idVendor}=="0471", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="6868", MODE="0666"
+SUBSYSTEM=="usb_device", ATTRS{idVendor}=="6868", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="232B", MODE="0666"
+SUBSYSTEM=="usb_device", ATTRS{idVendor}=="232B", MODE="0666"

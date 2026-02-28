@@ -1,0 +1,77 @@
+//---------------------------------------------------------------------------
+
+#include <vcl.h>
+#pragma hdrstop
+
+#include "Unit1.h"
+//---------------------------------------------------------------------------
+#pragma package(smart_init)
+#pragma resource "*.dfm"
+TForm1 *Form1;
+//---------------------------------------------------------------------------
+__fastcall TForm1::TForm1(TComponent* Owner)
+        : TForm(Owner)
+{
+  HINSTANCE hInst = LoadLibrary("TSCLIB.DLL");
+
+  (FARPROC&)about=GetProcAddress(hInst, "about");
+  (FARPROC&)openport=GetProcAddress(hInst, "openport");
+  (FARPROC&)closeport=GetProcAddress(hInst, "closeport");
+  (FARPROC&)sendcommand=GetProcAddress(hInst, "sendcommand");
+  (FARPROC&)setup=GetProcAddress(hInst, "setup");
+  (FARPROC&)clearbuffer=GetProcAddress(hInst, "clearbuffer");
+  (FARPROC&)barcode=GetProcAddress(hInst, "barcode");
+  (FARPROC&)printerfont=GetProcAddress(hInst, "printerfont");
+  (FARPROC&)windowsfont=GetProcAddress(hInst, "windowsfont");
+
+}
+//---------------------------------------------------------------------------
+
+void __fastcall TForm1::FormClose(TObject *Sender, TCloseAction &Action)
+{
+  FreeLibrary(hInst);    
+}
+//---------------------------------------------------------------------------
+void __fastcall TForm1::Button1Click(TObject *Sender)
+{
+  about();
+}
+//---------------------------------------------------------------------------
+void __fastcall TForm1::Button2Click(TObject *Sender)
+{
+  AnsiString paPrintData;
+  TDateTime pNow=Now();
+  AnsiString paDate=pNow.FormatString("yyyy/mm/dd");
+  AnsiString paTime=pNow.FormatString("hh:nn:ss");
+
+
+  openport("LPT1");
+
+  sendcommand("SIZE 55 mm,87 mm");
+  sendcommand("GAP 3 mm,0");
+  sendcommand("BLINE 3 mm,0");
+  sendcommand("SPEED 4");
+  sendcommand("DENSITY 8");
+  sendcommand("DIRECTION 1");
+  sendcommand("REFERENCE 0,0");
+  sendcommand("SET CUTTER OFF");
+  sendcommand("SET PEEL OFF");
+
+   sendcommand("CLS");
+//  paPrintData="TEXT 230,540,\"4\",0,2,2,\""+edRoomNo->Text+"\"";
+//  sendcommand(paPrintData);
+  windowsfont("10", "10", "80", "0", "2", "0", "0", "arial", "Arial font 80 pt");
+  paPrintData="TEXT 230,630,\"4\",0,2,2,\""+edCarNo->Text+"\"";
+  sendcommand(paPrintData);
+  paPrintData="TEXT 300,725,\"4\",0,1,1,\""+paDate+"\"";
+  sendcommand(paPrintData);
+  paPrintData="TEXT 300,815,\"4\",0,1,1,\""+paTime+"\"";
+  sendcommand(paPrintData);
+  sendcommand("PRINT 1");
+  sendcommand("FEED 120");
+
+
+    closeport();
+
+}
+//---------------------------------------------------------------------------

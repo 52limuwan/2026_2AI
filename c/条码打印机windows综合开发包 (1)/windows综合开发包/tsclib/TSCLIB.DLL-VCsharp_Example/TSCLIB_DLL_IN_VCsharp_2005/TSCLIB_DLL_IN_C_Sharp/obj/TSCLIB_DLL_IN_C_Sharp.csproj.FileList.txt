@@ -1,0 +1,16 @@
+obj\Debug\ResolveAssemblyReference.cache
+obj\Debug\TSCLIB_DLL_IN_C_Sharp.Properties.Resources.resources
+obj\Debug\TSCLIB_DLL_IN_C_Sharp.csproj.GenerateResource.Cache
+bin\Debug\TSCLIB_DLL_IN_C_Sharp.exe
+bin\Debug\TSCLIB_DLL_IN_C_Sharp.pdb
+obj\Debug\TSCLIB_DLL_IN_C_Sharp.exe
+obj\Debug\TSCLIB_DLL_IN_C_Sharp.pdb
+obj\Debug\TSCLIB_DLL_IN_C_Sharp.Form1.resources
+obj\Release\ResolveAssemblyReference.cache
+obj\Release\TSCLIB_DLL_IN_C_Sharp.Form1.resources
+obj\Release\TSCLIB_DLL_IN_C_Sharp.Properties.Resources.resources
+obj\Release\TSCLIB_DLL_IN_C_Sharp.csproj.GenerateResource.Cache
+obj\Release\TSCLIB_DLL_IN_C_Sharp.pdb
+bin\Release\TSCLIB_DLL_IN_C_Sharp.exe
+bin\Release\TSCLIB_DLL_IN_C_Sharp.pdb
+obj\Release\TSCLIB_DLL_IN_C_Sharp.exe
