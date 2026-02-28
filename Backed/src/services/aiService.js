@@ -2,6 +2,181 @@ const axios = require('axios');
 const { loadSkillPrompts } = require('./skillLoader');
 
 /**
+ * 使用 Dify API 生成饮食分析报告
+ * @param {Object} nutritionData - 营养数据
+ * @param {string} period - 时间范围（'本周' 或 '本月'）
+ * @param {string} role - 用户角色（'client' 或 'guardian'）
+ * @returns {Promise<Object>} - 返回 AI 分析结果
+ */
+async function generateDietAnalysisWithDify(nutritionData, period = '本周', role = 'client') {
+  console.log('\n========================================');
+  console.log(`[AI 饮食分析请求 - Dify] ${role.toUpperCase()} - ${period}`);
+  console.log('========================================');
+  console.log('请求时间:', new Date().toLocaleString('zh-CN'));
+  
+  const difyApiKey = process.env.DIFY_API_KEY;
+  const difyApiUrl = process.env.DIFY_API_URL || 'http://192.168.1.120/v1';
+  
+  console.log('配置信息:');
+  console.log(`  - Dify API URL: ${difyApiUrl}`);
+  console.log(`  - Dify API Key: ${difyApiKey ? difyApiKey.substring(0, 10) + '...' : '未配置'}`);
+  
+  if (!difyApiKey || difyApiKey.includes('your_')) {
+    throw new Error('请在 .env 文件中配置有效的 DIFY_API_KEY');
+  }
+
+  // 准备营养数据
+  const variables = {
+    calories: Math.round(nutritionData.calories || 0),
+    protein: Math.round((nutritionData.protein || 0) * 10) / 10,
+    fat: Math.round((nutritionData.fat || 0) * 10) / 10,
+    carbs: Math.round((nutritionData.carbs || 0) * 10) / 10,
+    fiber: Math.round((nutritionData.fiber || 0) * 10) / 10,
+    calcium: Math.round((nutritionData.calcium || 0) * 10) / 10,
+    vitaminC: Math.round((nutritionData.vitaminC || 0) * 10) / 10,
+    iron: Math.round((nutritionData.iron || 0) * 10) / 10,
+    dailyTarget: nutritionData.dailyTarget || 2000,
+    achievement: nutritionData.achievement || 0,
+    newDishes: nutritionData.newDishes || 0
+  };
+  
+  console.log('\n营养数据:');
+  console.log(`  - 总热量: ${variables.calories} kcal`);
+  console.log(`  - 蛋白质: ${variables.protein} g`);
+  console.log(`  - 脂肪: ${variables.fat} g`);
+  console.log(`  - 碳水化合物: ${variables.carbs} g`);
+  console.log(`  - 目标达成率: ${variables.achievement}%`);
+
+  // 构建查询内容
+  const query = `请根据以下${period}饮食数据进行分析并提供建议：
+
+时间范围：${period}
+总热量：${variables.calories} kcal
+蛋白质：${variables.protein} g
+脂肪：${variables.fat} g
+碳水化合物：${variables.carbs} g
+膳食纤维：${variables.fiber} g
+钙：${variables.calcium} mg
+维生素C：${variables.vitaminC} mg
+铁：${variables.iron} mg
+
+每日热量目标：${variables.dailyTarget} kcal
+目标达成率：${variables.achievement}%
+饮食多样性：尝试了 ${variables.newDishes} 种不同菜品
+
+请提供：
+1. 营养摄入评估（是否均衡、是否达标）
+2. 具体的改善建议（3-5条）
+3. 推荐的食物类型
+4. 生活方式建议
+
+请用温和、鼓励的语气，建议要具体可行。`;
+
+  console.log(`\n查询内容长度: ${query.length} 字符`);
+  console.log('\n发送 Dify API 请求...');
+
+  try {
+    const startTime = Date.now();
+    const response = await axios.post(
+      `${difyApiUrl}/chat-messages`,
+      {
+        files: [],
+        inputs: {},
+        query: query,
+        response_mode: 'streaming',  // 使用流式模式
+        user: `${role}_report`,
+        conversation_id: ''  // 每次都是新对话
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${difyApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        responseType: 'stream',  // 接收流式响应
+        timeout: 120000  // 120秒超时
+      }
+    );
+
+    const duration = Date.now() - startTime;
+    
+    // 处理流式响应
+    let analysis = '';
+    let buffer = '';
+    
+    return new Promise((resolve, reject) => {
+      response.data.on('data', (chunk) => {
+        buffer += chunk.toString();
+        
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const jsonStr = line.substring(6).trim();
+              if (!jsonStr) continue;
+              
+              const data = JSON.parse(jsonStr);
+              
+              if (data.event === 'message') {
+                // 累积文本内容
+                analysis += data.answer || '';
+              } else if (data.event === 'message_end') {
+                // 消息结束
+                console.log(`\n[成功] Dify API 请求成功 (耗时: ${Date.now() - startTime}ms)`);
+                console.log(`\n生成内容预览:`);
+                console.log(`  ${analysis.substring(0, 200)}...`);
+                console.log('========================================\n');
+                
+                resolve({
+                  analysis,
+                  tokensUsed: 0,
+                  model: 'dify'
+                });
+              } else if (data.event === 'error') {
+                reject(new Error(data.message || 'Dify 返回错误'));
+              }
+            } catch (e) {
+              // 忽略 JSON 解析错误
+            }
+          }
+        }
+      });
+      
+      response.data.on('end', () => {
+        if (analysis) {
+          resolve({
+            analysis,
+            tokensUsed: 0,
+            model: 'dify'
+          });
+        } else {
+          reject(new Error('未收到完整响应'));
+        }
+      });
+      
+      response.data.on('error', (error) => {
+        reject(error);
+      });
+    });
+  } catch (error) {
+    const errorMsg = error.response?.data || error.message;
+    console.error(`\n[失败] Dify API 请求失败:`);
+    console.error(`  错误信息: ${JSON.stringify(errorMsg, null, 2)}`);
+    console.log('========================================\n');
+    
+    // 如果 Dify 调用失败，使用备用分析
+    const fallbackAnalysis = generateFallbackAnalysis(nutritionData, period, role);
+    console.log('[警告] 使用备用分析方案\n');
+    return {
+      analysis: fallbackAnalysis,
+      tokensUsed: 0,
+      model: 'fallback'
+    };
+  }
+}
+
+/**
  * 调用 OpenAI API 生成饮食分析报告
  * @param {Object} nutritionData - 营养数据
  * @param {string} period - 时间范围（'本周' 或 '本月'）
@@ -209,10 +384,6 @@ function generateFallbackAnalysis(nutritionData, period, role = 'client') {
   
   return analysis;
 }
-
-module.exports = {
-  generateDietAnalysis
-};
 
 /**
  * 获取当前节气
@@ -457,11 +628,6 @@ function generateFallbackSeasonalDishes(solarTerm) {
   
   return { dishes };
 }
-
-module.exports = {
-  generateDietAnalysis,
-  generateSeasonalDishes
-};
 
 /**
  * 调用文生图 API 生成菜品图片
@@ -983,6 +1149,7 @@ function extractIngredients(dishName) {
 
 module.exports = {
   generateDietAnalysis,
+  generateDietAnalysisWithDify,
   generateSeasonalDishes,
   generateDishImage,
   generateHealthSuggestion,

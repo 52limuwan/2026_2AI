@@ -6,7 +6,7 @@ const path = require('path');
 const db = require('../db');
 const { authRequired, requireRole } = require('../middleware/auth');
 const { success, failure } = require('../utils/respond');
-const { generateDietAnalysis, generateSmartRecommendation } = require('../services/aiService');
+const { generateDietAnalysis, generateDietAnalysisWithDify, generateSmartRecommendation } = require('../services/aiService');
 const { getPastDays } = require('../utils/dateHelper');
 
 const router = express.Router();
@@ -281,8 +281,8 @@ router.post('/diet-analysis/weekly', authRequired, requireRole('client'), async 
       newDishes
     };
 
-    // 调用 AI 服务生成分析
-    const { analysis, tokensUsed, model } = await generateDietAnalysis(nutritionData, '本周', 'client');
+    // 调用 Dify API 生成分析
+    const { analysis, tokensUsed, model } = await generateDietAnalysisWithDify(nutritionData, '本周', 'client');
 
     // 保存到数据库
     const result = await db.run(
@@ -408,8 +408,8 @@ router.post('/diet-analysis/monthly', authRequired, requireRole('client'), async
       newDishes
     };
 
-    // 调用 AI 服务生成分析
-    const { analysis, tokensUsed, model } = await generateDietAnalysis(nutritionData, '本月', 'client');
+    // 调用 Dify API 生成分析
+    const { analysis, tokensUsed, model } = await generateDietAnalysisWithDify(nutritionData, '本月', 'client');
 
     // 保存到数据库
     const result = await db.run(
@@ -604,8 +604,8 @@ router.post('/diet-analysis/guardian/weekly/:clientId', authRequired, requireRol
       newDishes
     };
 
-    // 调用 AI 服务生成分析（使用 guardian 角色）
-    const { analysis, tokensUsed, model } = await generateDietAnalysis(nutritionData, '本周', 'guardian');
+    // 调用 Dify API 生成分析（使用 guardian 角色）
+    const { analysis, tokensUsed, model } = await generateDietAnalysisWithDify(nutritionData, '本周', 'guardian');
 
     // 保存到数据库
     const result = await db.run(
@@ -741,8 +741,8 @@ router.post('/diet-analysis/guardian/monthly/:clientId', authRequired, requireRo
       newDishes
     };
 
-    // 调用 AI 服务生成分析（使用 guardian 角色）
-    const { analysis, tokensUsed, model } = await generateDietAnalysis(nutritionData, '本月', 'guardian');
+    // 调用 Dify API 生成分析（使用 guardian 角色）
+    const { analysis, tokensUsed, model } = await generateDietAnalysisWithDify(nutritionData, '本月', 'guardian');
 
     // 保存到数据库
     const result = await db.run(
