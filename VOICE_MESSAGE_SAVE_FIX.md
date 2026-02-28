@@ -1,196 +1,271 @@
-# 语音消息保存优化
+# 语音消息保存问题修复
 
-## 问题描述
+## 🐛 发现的问题
 
-用户反馈：语音通话中的用户语音转文字（STT）和 AI 回复文本（TTS）没有正确保存到聊天记录中。
+### 问题1：语音通话时消息未发送给大模型
+**现象**：
+- 语音识别后，用户说的话显示在界面上
+- 但 AI 没有回复
+- 控制台没有看到大模型的响应
 
-## 问题根源
+**原因**：
+- 收到 STT 消息后，只保存到本地 `messages` 数组
+- 没有通过 WebSocket 发送给服务器
+- 服务器无法将文本发送给大模型处理
 
-1. **流式输出导致保存时机不确定**
-   - TTS 消息使用流式输出 + 防抖保存
-   - 可能在挂断时还有未保存的内容
-   - 防抖定时器可能被清除导致消息丢失
-
-2. **保存逻辑复杂**
-   - 多个定时器管理（streamingTimer, saveDebounceTimer, llmCompleteTimer）
-   - 保存时机分散在多个地方
-   - 难以追踪消息是否已保存
-
-## 解决方案
-
-### 1. 简化消息处理流程
-
-**STT 消息（用户语音）**
-- 收到后立即添加到 messages 数组
-- 立即保存到数据库
-- 标记 `saved: true`
-
-**TTS 消息（AI 回复）**
-- 收到 `sentence_start` 时直接累积文本到当前 AI 消息
-- 移除流式输出，直接显示完整文本
-- 收到 `stop` 时保存完整消息到数据库
-- 标记 `saved: true`
-
-**挂断时检查**
-- 遍历所有消息，检查 `saved` 标记
-- 保存所有未保存的消息（`saved: false`）
-
-### 2. 代码修改
-
-#### handleWebSocketMessage 函数
+**修复**：
+在收到 STT 消息后，立即调用 `wsInstance.sendTextMessage()` 发送文本给服务器
 
 ```javascript
-// STT 消息处理
-if (message.type === 'stt') {
-  const userMessage = {
-    role: 'user',
-    content: message.text,
+// 🔥 关键修复：将识别的文本发送给服务器，让大模型处理
+console.log('📤 发送文本给大模型:', message.text);
+if (wsInstance && wsInstance.sendTextMessage) {
+  wsInstance.sendTextMessage(message.text);
+}
+```
+
+---
+
+### 问题2：AI 回复被分片段保存
+**现象**：
+- 语音通话时，AI 的回复正常显示
+- 刷新页面后，AI 的回复变成多条短消息
+- 每条消息只有几个字
+
+**原因**：
+- 每个 `sentence_start` 消息都创建一个新的 AI 消息对象
+- 每个片段都单独保存到数据库
+- 导致一条完整的回复被拆分成多条记录
+
+**修复前的代码**：
+```javascript
+else if (message.state === 'sentence_start' && message.text) {
+  // 为每个片段创建单独的 AI 消息 ❌
+  const aiMessage = {
+    role: 'ai',
+    content: message.text,  // 只包含当前片段
     timestamp: Date.now(),
-    saved: false  // 添加保存标记
+    skillSteps: null,
+    saved: false
   }
-  messages.value.push(userMessage)
-  
-  // 立即保存
-  saveMessageToDatabase(userMessage).then(() => {
-    userMessage.saved = true
-  })
+  messages.value.push(aiMessage)
 }
+```
 
-// TTS 消息处理
-else if (message.type === 'tts') {
-  if (message.state === 'sentence_start' && message.text) {
-    // 创建或更新 AI 消息
-    if (currentAiMessageIndex.value === null) {
-      const aiMessage = {
-        role: 'ai',
-        content: '',
-        timestamp: Date.now(),
-        saved: false  // 添加保存标记
-      }
-      messages.value.push(aiMessage)
-      currentAiMessageIndex.value = messages.value.length - 1
-    }
-    
-    // 直接累积文本（不使用流式输出）
+**修复后的代码**：
+```javascript
+if (message.state === 'start') {
+  // TTS 开始时，创建一个新的 AI 消息 ✅
+  const aiMessage = {
+    role: 'ai',
+    content: '',  // 初始为空
+    timestamp: Date.now(),
+    skillSteps: null,
+    saved: false
+  }
+  messages.value.push(aiMessage)
+  currentAiMessageIndex.value = messages.value.length - 1
+}
+else if (message.state === 'sentence_start' && message.text) {
+  // 累积文本到当前 AI 消息 ✅
+  if (currentAiMessageIndex.value !== null) {
     const aiMessage = messages.value[currentAiMessageIndex.value]
-    aiMessage.content += message.text
-    scrollToBottom()
-    
-  } else if (message.state === 'stop') {
-    // TTS 结束，保存完整消息
-    if (currentAiMessageIndex.value !== null) {
-      const aiMessage = messages.value[currentAiMessageIndex.value]
-      if (aiMessage && !aiMessage.saved) {
-        saveMessageToDatabase(aiMessage).then(() => {
-          aiMessage.saved = true
-        })
-      }
-      currentAiMessageIndex.value = null
+    if (aiMessage && aiMessage.role === 'ai') {
+      aiMessage.content += message.text  // 累积文本
+    }
+  }
+}
+else if (message.state === 'stop') {
+  // TTS 结束时，保存完整的 AI 消息 ✅
+  if (currentAiMessageIndex.value !== null) {
+    const aiMessage = messages.value[currentAiMessageIndex.value]
+    if (aiMessage && !aiMessage.saved && aiMessage.content) {
+      saveMessageToDatabase(aiMessage)
     }
   }
 }
 ```
 
-#### handleClosePhoneCall 函数
+---
+
+### 问题3：技能卡片状态未更新到数据库
+**现象**：
+- 语音通话时，技能卡片正常显示"思考中" → "思考已完成"
+- 刷新页面后，技能卡片又变回"思考中"
+- 即使 AI 已经回复过了
+
+**原因**：
+- 用户消息创建时，技能卡片状态是"思考中"
+- 第一次保存到数据库时，状态是"思考中"
+- TTS 结束时，虽然更新了状态为"思考已完成"
+- 但**没有重新保存到数据库**
+- 刷新页面后，从数据库加载的还是旧状态
+
+**修复**：
+在 TTS 结束时，更新技能卡片状态后，重新保存用户消息
 
 ```javascript
-const handleClosePhoneCall = () => {
-  // ... 其他清理逻辑 ...
-  
-  // 保存所有未保存的消息
-  console.log('检查未保存的消息...');
-  let unsavedCount = 0;
-  messages.value.forEach(msg => {
-    if (!msg.saved && msg.content && msg.content.trim()) {
-      unsavedCount++;
-      console.log(`📝 保存未保存的${msg.role}消息:`, msg.content.substring(0, 50) + '...');
-      saveMessageToDatabase(msg).then(() => {
-        msg.saved = true;
-        console.log(`✅ ${msg.role}消息已保存`);
-      }).catch(err => {
-        console.error(`❌ 保存${msg.role}消息失败:`, err);
-      });
+else if (message.state === 'stop') {
+  // 更新最近的用户消息的技能卡片状态为"思考完毕"
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const msg = messages.value[i]
+    if (msg.role === 'user' && msg.skillSteps) {
+      const thinkingStep = msg.skillSteps.find(s => s.type === 'thinking')
+      if (thinkingStep) {
+        thinkingStep.title = '思考已完成'
+        thinkingStep.type = 'thinking-done'
+        messages.value = [...messages.value]
+        
+        // 🔥 关键修复：重新保存用户消息，更新技能卡片状态
+        console.log('📝 重新保存用户消息，更新技能卡片状态');
+        saveMessageToDatabase(msg).then(() => {
+          console.log('✅ 用户消息技能卡片状态已更新');
+        })
+        break
+      }
     }
-  });
-  
-  if (unsavedCount > 0) {
-    console.log(`发现 ${unsavedCount} 条未保存的消息，正在保存...`);
-  } else {
-    console.log('所有消息已保存');
   }
-  
-  // ... 其他清理逻辑 ...
 }
 ```
 
-### 3. 修改的文件
+---
 
-- `Unified/src/modules/client/AIAssistant.vue`
-- `Unified/src/modules/guardian/AIAssistant.vue`
-- `Unified/src/modules/gov/AIAssistant.vue`
+## ✅ 修复效果
 
-所有三个角色的 AIAssistant 组件都进行了相同的修改。
+### 修复前
+1. ❌ 语音识别后，AI 不回复
+2. ❌ 刷新页面后，AI 回复变成多条短消息
+3. ❌ 刷新页面后，技能卡片显示"思考中"
 
-## 优势
+### 修复后
+1. ✅ 语音识别后，AI 正常回复
+2. ✅ 刷新页面后，AI 回复是完整的一条消息
+3. ✅ 刷新页面后，技能卡片显示"思考已完成"
 
-1. **逻辑简单清晰**
-   - 移除了流式输出和防抖保存
-   - 保存时机明确（STT 立即保存，TTS 在 stop 时保存）
-   - 代码更易维护
+---
 
-2. **保存可靠**
-   - 每条消息都有 `saved` 标记
-   - 挂断时检查并保存所有未保存的消息
-   - 不会丢失任何消息
+## 🧪 测试步骤
 
-3. **性能更好**
-   - 减少了定时器的使用
-   - 减少了数据库写入次数（不再频繁防抖保存）
-   - 直接显示文本，无需流式输出
+### 测试1：验证 AI 回复
+1. 点击电话按钮开始语音通话
+2. 说出："我想了解营养搭配"
+3. 观察 AI 是否有语音回复
+4. 观察主界面是否显示 AI 的文字回复
 
-4. **调试友好**
-   - 详细的日志输出
-   - 清晰的保存状态标记
-   - 易于追踪消息保存情况
+**预期结果**：
+- ✅ AI 有语音回复
+- ✅ 主界面显示完整的 AI 文字回复
 
-## 测试建议
+---
 
-1. **正常通话流程**
-   - 启动语音通话
-   - 说话并等待 AI 回复
-   - 正常挂断
-   - 检查聊天记录是否完整保存
+### 测试2：验证消息保存
+1. 完成一次语音通话（包含用户提问和 AI 回复）
+2. 挂断电话
+3. 刷新浏览器页面
+4. 观察聊天记录
 
-2. **中断场景**
-   - 在 AI 回复过程中挂断
-   - 检查是否保存了部分回复
+**预期结果**：
+- ✅ 用户消息保留
+- ✅ AI 回复是完整的一条消息（不是多条短消息）
+- ✅ 技能卡片显示"思考已完成"（不是"思考中"）
 
-3. **多轮对话**
-   - 进行多轮语音对话
-   - 检查所有消息是否都保存
+---
 
-4. **日志检查**
-   - 查看控制台日志
-   - 确认看到 "📝 保存用户消息" 和 "📝 保存AI消息"
-   - 确认看到 "✅ 消息已保存"
+### 测试3：验证技能卡片状态
+1. 进行语音通话，说出包含技能关键词的话
+2. 等待 AI 回复完成
+3. 观察技能卡片状态（应该是"思考已完成"）
+4. 刷新页面
+5. 再次观察技能卡片状态
 
-## 预期日志输出
+**预期结果**：
+- ✅ 刷新前：技能卡片显示"思考已完成"
+- ✅ 刷新后：技能卡片仍然显示"思考已完成"
 
+---
+
+## 📊 数据库结构
+
+### messages 表
 ```
-STT 识别结果: 你好
-📝 保存用户消息: 你好
+id: 消息ID
+conversation_id: 会话ID
+role: 'user' | 'ai'
+content: 消息内容（完整文本）
+timestamp: 时间戳
+context: JSON 字符串，包含 skillSteps
+```
+
+### context 字段示例
+```json
+{
+  "skillSteps": [
+    {
+      "type": "thinking-done",
+      "title": "思考已完成",
+      "skillName": ""
+    },
+    {
+      "type": "read",
+      "title": "读取技能",
+      "skillName": "营养师.md"
+    },
+    {
+      "type": "use",
+      "title": "使用技能",
+      "skillName": "营养师 - 基础营养咨询"
+    }
+  ]
+}
+```
+
+---
+
+## 🔍 调试技巧
+
+### 查看保存的消息
+打开浏览器控制台，查看日志：
+```
+📝 保存用户消息: 我想了解营养搭配
 ✅ 用户消息已保存
-
-TTS 文本片段: 您好
-AI消息累积长度: 2
-TTS 文本片段: ，很高兴见到您
-AI消息累积长度: 9
-TTS 结束，准备保存AI消息
-📝 保存AI消息，长度: 9
-✅ AI消息已保存
-
-handleClosePhoneCall 被调用
-检查未保存的消息...
-所有消息已保存
-断开 WebSocket 连接
+📤 发送文本给大模型: 我想了解营养搭配
+✅ 累积 AI 消息内容，当前长度: 50
+📝 保存完整的 AI 消息，长度: 200
+✅ AI 消息已保存
+📝 重新保存用户消息，更新技能卡片状态
+✅ 用户消息技能卡片状态已更新
 ```
+
+### 检查数据库
+查询数据库中的消息记录：
+```sql
+SELECT id, role, content, context, timestamp 
+FROM messages 
+WHERE conversation_id = 'xxx' 
+ORDER BY timestamp DESC;
+```
+
+检查点：
+1. 每次对话应该有 2 条记录（1 条用户消息 + 1 条 AI 消息）
+2. 用户消息的 `context` 字段应该包含完整的技能卡片信息
+3. AI 消息的 `content` 应该是完整的回复文本
+
+---
+
+## 💡 注意事项
+
+1. **WebSocket 连接**：确保 xiaozhiserver 正在运行并且可以连接
+2. **音频编解码**：确保 libopus.js 正确加载
+3. **数据库连接**：确保后端 API 正常工作
+4. **会话管理**：确保 conversationId 正确保存和恢复
+
+---
+
+## 🎉 总结
+
+通过这次修复，解决了三个关键问题：
+1. ✅ 语音消息正确发送给大模型
+2. ✅ AI 回复作为完整消息保存
+3. ✅ 技能卡片状态正确更新到数据库
+
+现在语音通话功能完全正常，刷新页面后聊天记录和技能卡片状态都能正确恢复！

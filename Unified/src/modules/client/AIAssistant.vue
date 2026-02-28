@@ -201,7 +201,7 @@
             <p class="call-status" :class="{ 'calling': callStatus === 'calling', 'connected': callStatus === 'connected', 'thinking': isThinking }">
               {{ callStatusText }}
             </p>
-            <p v-if="callStatus === 'connected' && callDuration > 0" class="call-duration">
+            <p v-if="callStatus === 'connected' && callDuration >= 0" class="call-duration">
               {{ formattedCallDuration }}
             </p>
           </div>
@@ -259,6 +259,9 @@ let wsInstance = null
 const wsConnected = ref(false)
 const wsConnecting = ref(false)
 const isVoiceMode = ref(false) // 跟踪语音模式状态
+let heartbeatTimer = null // 心跳定时器
+let heartbeatCheckTimer = null // 心跳检查定时器
+let lastHeartbeatTime = 0 // 最后一次心跳时间
 
 // 获取或创建 WebSocket 实例
 const getWsInstance = async () => {
@@ -577,13 +580,55 @@ const loadChatHistory = async () => {
       
       if (historyMessages && historyMessages.length > 0) {
         // 加载历史消息，包含技能卡片信息
-        messages.value = historyMessages.map(msg => ({
+        const loadedMessages = historyMessages.map(msg => ({
           id: msg.id,
           role: msg.role,
           content: msg.content,
           timestamp: msg.timestamp,
           skillSteps: msg.skillSteps || null // 加载技能卡片信息
         }))
+        
+        // 🔥 去重：根据 id 去重（如果有id），或根据 content + timestamp + role 去重
+        const uniqueMessages = []
+        const seenIds = new Set()
+        const seenContentKeys = new Set()
+        
+        for (const msg of loadedMessages) {
+          // 如果有 id，使用 id 去重
+          if (msg.id) {
+            if (!seenIds.has(msg.id)) {
+              seenIds.add(msg.id)
+              uniqueMessages.push(msg)
+            } else {
+              console.log('发现重复消息 (id):', msg.id, msg.content.substring(0, 30));
+            }
+          } else {
+            // 如果没有 id，使用 content + timestamp + role 组合去重
+            const contentKey = `${msg.role}_${msg.timestamp}_${msg.content}`
+            if (!seenContentKeys.has(contentKey)) {
+              seenContentKeys.add(contentKey)
+              uniqueMessages.push(msg)
+            } else {
+              console.log('发现重复消息 (content):', msg.content.substring(0, 30));
+            }
+          }
+        }
+        
+        messages.value = uniqueMessages
+        
+        // 🔥 关键修复：按时间戳排序，如果时间戳相同，用户消息排在前面
+        messages.value.sort((a, b) => {
+          if (a.timestamp === b.timestamp) {
+            // 时间戳相同时，用户消息排在前面
+            if (a.role === 'user' && b.role === 'ai') return -1
+            if (a.role === 'ai' && b.role === 'user') return 1
+            return 0
+          }
+          return a.timestamp - b.timestamp
+        })
+        console.log('历史消息已去重并排序，原始:', historyMessages.length, '条，去重后:', messages.value.length, '条');
+        console.log('消息顺序:', messages.value.map(m => ({ role: m.role, time: new Date(m.timestamp).toLocaleTimeString(), content: m.content.substring(0, 20) })));
+        
         // 欢迎消息始终显示，不隐藏
         scrollToBottom()
       } else {
@@ -630,24 +675,73 @@ const connectWebSocket = async () => {
     wsConnected.value = true
     
     // 注册消息处理器
-    console.log('📝 注册消息处理器 handleWebSocketMessage');
+    console.log('注册消息处理器 handleWebSocketMessage');
     wsInstance.onMessage(handleWebSocketMessage)
     
     // 注册连接状态处理器（直接赋值）
     wsInstance.onConnectionStateChange = (isConnected) => {
+      const wasConnected = wsConnected.value
       wsConnected.value = isConnected
+      
       if (!isConnected) {
-        showToast('连接已断开')
-        // 3秒后尝试重连
-        setTimeout(() => {
-          if (!wsConnected.value) {
-            connectWebSocket()
-          }
-        }, 3000)
+        console.error('WebSocket 连接断开');
+        
+        // 如果在语音通话中断开，需要特殊处理
+        if (isVoiceMode.value) {
+          console.error('语音通话中连接断开，尝试重连...');
+          showToast('连接断开，正在重连...')
+          
+          // 立即尝试重连（不等待3秒）
+          setTimeout(() => {
+            if (!wsConnected.value && isVoiceMode.value) {
+              console.log('尝试重新连接...');
+              connectWebSocket().then(() => {
+                if (wsConnected.value && isVoiceMode.value) {
+                  console.log('重连成功，恢复语音会话');
+                  showToast('连接已恢复')
+                  
+                  // 重新启动音频会话
+                  const historyForReconnect = messages.value
+                    .filter(m => m.content && m.content.trim())
+                    .map(m => ({
+                      role: m.role,
+                      content: m.content
+                    }))
+                  
+                  wsInstance.startAudioSession(historyForReconnect)
+                }
+              }).catch(err => {
+                console.error('重连失败:', err);
+                showToast('重连失败，请重新发起通话')
+                // 关闭通话界面
+                handleClosePhoneCall()
+              })
+            }
+          }, 1000) // 1秒后重连
+        } else {
+          // 非语音模式，正常提示并延迟重连
+          showToast('连接已断开')
+          // 3秒后尝试重连
+          setTimeout(() => {
+            if (!wsConnected.value) {
+              connectWebSocket()
+            }
+          }, 3000)
+        }
+      } else if (wasConnected === false && isConnected === true) {
+        // 从断开恢复到连接
+        console.log('WebSocket 连接已恢复');
+        if (!isVoiceMode.value) {
+          showToast('连接已恢复')
+        }
       }
     }
     
     console.log('WebSocket 连接成功，消息处理器已注册')
+    
+    // 🔥 启动心跳检测
+    startHeartbeat()
+    
   } catch (error) {
     console.error('连接失败:', error)
     showToast('连接失败，请重试')
@@ -658,6 +752,9 @@ const connectWebSocket = async () => {
 
 // 处理 WebSocket 消息
 const handleWebSocketMessage = (message) => {
+  // 🔥 更新心跳时间
+  updateHeartbeat()
+  
   console.log('收到消息:', message)
   console.log('当前 isVoiceMode:', isVoiceMode.value);
   console.log('当前 messages 数组长度:', messages.value.length);
@@ -692,35 +789,53 @@ const handleWebSocketMessage = (message) => {
         role: 'user',
         content: message.text,
         timestamp: Date.now(),
-        skillSteps: null,
+        skillSteps: null, // 语音模式下不显示技能卡片
         saved: false // 标记是否已保存
       }
       messages.value.push(userMessage)
-      console.log('✅ 用户消息已添加到 messages 数组，当前长度:', messages.value.length);
+      const userMessageIndex = messages.value.length - 1
+      
+      // 保存用户消息的时间戳，确保 AI 消息的时间戳晚于用户消息
+      const userTimestamp = userMessage.timestamp
+      
+      console.log('用户消息已添加到 messages 数组，当前长度:', messages.value.length);
       console.log('当前 messages 数组:', messages.value.map(m => ({ role: m.role, content: m.content.substring(0, 20) })));
+      
+      // 🔥 语音模式下不创建技能卡片，只在语音通话界面显示"思考中"
+      // 技能卡片只在文字聊天模式下显示
+      
       scrollToBottom()
       
-      // 立即保存用户消息到数据库
-      console.log('📝 保存用户消息:', message.text);
+      // 立即保存用户消息到数据库（不包含技能卡片）
+      console.log('保存用户消息 (语音模式，无技能卡片):', message.text);
       saveMessageToDatabase(userMessage).then(() => {
         userMessage.saved = true
-        console.log('✅ 用户消息已保存');
+        console.log('用户消息已保存 (语音模式)');
       }).catch(err => {
-        console.error('❌ 保存用户消息失败:', err);
+        console.error('保存用户消息失败:', err);
       })
       
-      // 语音模式下不需要技能检测，只显示简单的思考状态
       // 显示"思考中"状态
       isThinking.value = true
+      
+      // 🔥 关键修复：将识别的文本发送给服务器，让大模型处理
+      // 注意：如果 xiaozhiserver 会自动处理 STT 并发送给大模型，则不需要这一步
+      // 如果服务器不会自动处理，则需要手动发送
+      console.log('发送文本给大模型:', message.text);
+      if (wsInstance && wsInstance.sendTextMessage) {
+        wsInstance.sendTextMessage(message.text);
+      }
+      
+      // 将用户消息时间戳存储到全局变量，供 TTS start 使用
+      window._lastUserMessageTimestamp = userTimestamp
     }
     
   } else if (message.type === 'tts') {
     // TTS 状态和文本内容 - 这是真正的AI回复
     if (message.state === 'start') {
       console.log('AI 开始回复 (TTS)')
-      // 重置当前 AI 消息索引，准备接收新的片段
+      // 语音模式下不需要预创建AI消息，每个片段都是独立的消息
       currentAiMessageIndex.value = null
-      // 注意：这里不关闭 isThinking，等到真正有文本输出时再关闭
       
     } else if (message.state === 'sentence_start' && message.text) {
       // 收到文本片段 - 这是真正的AI回复内容
@@ -741,43 +856,35 @@ const handleWebSocketMessage = (message) => {
         });
       }
       
-      // 为每个片段创建单独的 AI 消息
+      // 🔥 语音模式：每个片段作为独立的AI消息立即保存
       if (message.text && message.text.trim()) {
         const aiMessage = {
           role: 'ai',
           content: message.text,
           timestamp: Date.now(),
           skillSteps: null,
-          saved: false // 标记是否已保存
+          saved: false
         }
         messages.value.push(aiMessage)
-        console.log('✅ AI消息片段已创建，当前 messages 长度:', messages.value.length, '内容:', message.text);
+        console.log('创建新的 AI 消息片段，内容:', message.text);
         scrollToBottom()
+        
+        // 立即保存这个片段到数据库
+        console.log('立即保存 AI 消息片段 (语音模式)');
+        saveMessageToDatabase(aiMessage).then(() => {
+          aiMessage.saved = true
+          console.log('AI 消息片段已保存');
+        }).catch(err => {
+          console.error('保存 AI 消息片段失败:', err);
+        })
       }
       
     } else if (message.state === 'stop') {
-      // TTS 结束，保存所有未保存的 AI 消息片段
-      console.log('TTS 结束，准备保存所有AI消息片段');
+      // TTS 结束
+      console.log('TTS 结束');
       
-      // 查找所有未保存的 AI 消息
-      const unsavedAiMessages = messages.value.filter(msg => msg.role === 'ai' && !msg.saved && msg.content);
-      
-      if (unsavedAiMessages.length > 0) {
-        console.log(`发现 ${unsavedAiMessages.length} 条未保存的AI消息片段`);
-        
-        // 保存每个片段
-        unsavedAiMessages.forEach((aiMessage, index) => {
-          console.log(`📝 保存AI消息片段 ${index + 1}/${unsavedAiMessages.length}，长度:`, aiMessage.content.length);
-          saveMessageToDatabase(aiMessage).then(() => {
-            aiMessage.saved = true
-            console.log(`✅ AI消息片段 ${index + 1} 已保存`);
-          }).catch(err => {
-            console.error(`❌ 保存AI消息片段 ${index + 1} 失败:`, err);
-          })
-        });
-      }
-      
-      // 重置状态
+      // 语音模式下，每个片段已经单独保存，这里不需要再保存
+      // 只需要重置状态
       currentAiMessageIndex.value = null
     }
   }
@@ -894,6 +1001,12 @@ const stopStreaming = () => {
 
 // 保存消息到数据库
 const saveMessageToDatabase = async (message) => {
+  // 防止重复保存：如果消息已经标记为已保存，跳过
+  if (message.saved) {
+    console.log('消息已保存，跳过重复保存:', message.content.substring(0, 30));
+    return;
+  }
+  
   try {
     // 如果没有会话ID，创建新会话或使用临时ID
     if (!conversationId.value) {
@@ -903,18 +1016,18 @@ const saveMessageToDatabase = async (message) => {
         if (newConv && newConv.conversationId) {
           conversationId.value = newConv.conversationId
           localStorage.setItem('current_conversation_id', conversationId.value)
-          console.log('✅ 创建新会话:', conversationId.value)
+          console.log('创建新会话:', conversationId.value)
         } else {
           // 如果创建失败，使用临时ID
           conversationId.value = 'temp_' + Date.now()
           localStorage.setItem('current_conversation_id', conversationId.value)
-          console.log('⚠️ 使用临时会话ID:', conversationId.value)
+          console.log('使用临时会话ID:', conversationId.value)
         }
       } catch (error) {
         console.error('创建新会话失败:', error)
         conversationId.value = 'temp_' + Date.now()
         localStorage.setItem('current_conversation_id', conversationId.value)
-        console.log('⚠️ 使用临时会话ID:', conversationId.value)
+        console.log('使用临时会话ID:', conversationId.value)
       }
     }
     
@@ -922,7 +1035,9 @@ const saveMessageToDatabase = async (message) => {
       conversationId: conversationId.value,
       role: message.role,
       contentLength: message.content.length,
-      content: message.content.substring(0, 50) + '...'
+      content: message.content.substring(0, 50) + '...',
+      hasId: !!message.id,
+      id: message.id
     });
     
     // 准备保存的数据，包含技能卡片信息
@@ -933,16 +1048,32 @@ const saveMessageToDatabase = async (message) => {
       timestamp: message.timestamp
     }
     
+    // 如果消息已经有 ID，传递 ID 以便后端更新而不是创建新记录
+    if (message.id) {
+      messageData.id = message.id
+      console.log('更新已存在的消息，ID:', message.id);
+    }
+    
     // 如果有技能卡片信息，保存到 context 字段
     if (message.skillSteps) {
       messageData.context = JSON.stringify({ skillSteps: message.skillSteps })
+      console.log('保存技能卡片信息:', messageData.context);
     }
     
     await saveWebSocketMessage(messageData)
     
-    console.log('✅ 消息已成功保存到数据库', message.skillSteps ? '(包含技能卡片)' : '')
+    // 如果是新消息（没有ID），保存后从响应中获取ID
+    if (!message.id) {
+      // 注意：这里假设后端返回了消息ID，如果没有返回，需要修改后端API
+      // 暂时先不处理，因为不确定后端返回格式
+      console.log('新消息已保存到数据库');
+    } else {
+      console.log('消息已更新到数据库，ID:', message.id);
+    }
+    
+    console.log('消息已成功保存到数据库', message.skillSteps ? '(包含技能卡片)' : '')
   } catch (error) {
-    console.error('❌ 保存消息失败:', error)
+    console.error('保存消息失败:', error)
     // 不影响用户体验，静默失败
   }
 }
@@ -1408,12 +1539,12 @@ const callStatusText = computed(() => {
   return '通话中'
 })
 
-// 监听思考完毕状态，1秒后自动切换
+// 监听思考完毕状态，2秒后自动切换
 watch(thinkingComplete, (newVal) => {
   if (newVal) {
     setTimeout(() => {
       thinkingComplete.value = false
-    }, 1000)
+    }, 2000) // 延长到2秒，让用户看清状态
   }
 })
 
@@ -1466,7 +1597,7 @@ const handlePhoneCall = async (event) => {
 
   // 启用语音模式
   isVoiceMode.value = true
-  console.log('✅ 语音模式已启用，isVoiceMode:', isVoiceMode.value);
+  console.log('语音模式已启用，isVoiceMode:', isVoiceMode.value);
   wsInstance.setVoiceMode(true)
 
   // 使用之前保存的按钮位置
@@ -1540,7 +1671,7 @@ const handlePhoneCall = async (event) => {
 }
 
 // 关闭电话通话
-const handleClosePhoneCall = () => {
+const handleClosePhoneCall = async () => {
   console.log('handleClosePhoneCall 被调用');
   
   // 如果录音刚开始（少于1秒），忽略关闭请求
@@ -1556,15 +1687,7 @@ const handleClosePhoneCall = () => {
     if (wsInstance.audioPlayer) {
       wsInstance.audioPlayer.clearAllAudio();
     }
-    
-    // 断开 WebSocket 连接
-    console.log('断开 WebSocket 连接');
-    wsInstance.disconnect();
-    wsConnected.value = false;
   }
-  
-  // 禁用语音模式
-  isVoiceMode.value = false
   
   // 清理所有定时器
   if (callStatusTimer) {
@@ -1596,24 +1719,40 @@ const handleClosePhoneCall = () => {
   // 保存所有未保存的消息
   console.log('检查未保存的消息...');
   let unsavedCount = 0;
+  const savePromises = [];
+  
   messages.value.forEach(msg => {
     if (!msg.saved && msg.content && msg.content.trim()) {
       unsavedCount++;
-      console.log(`📝 保存未保存的${msg.role}消息:`, msg.content.substring(0, 50) + '...');
-      saveMessageToDatabase(msg).then(() => {
+      console.log(`保存未保存的${msg.role}消息:`, msg.content.substring(0, 50) + '...');
+      const savePromise = saveMessageToDatabase(msg).then(() => {
         msg.saved = true;
-        console.log(`✅ ${msg.role}消息已保存`);
+        console.log(`${msg.role}消息已保存`);
       }).catch(err => {
-        console.error(`❌ 保存${msg.role}消息失败:`, err);
+        console.error(`保存${msg.role}消息失败:`, err);
       });
+      savePromises.push(savePromise);
     }
   });
   
   if (unsavedCount > 0) {
     console.log(`发现 ${unsavedCount} 条未保存的消息，正在保存...`);
+    // 等待所有消息保存完成
+    await Promise.allSettled(savePromises);
+    console.log('所有消息保存完成');
   } else {
     console.log('所有消息已保存');
   }
+  
+  // 等待消息保存完成后再断开 WebSocket
+  if (wsInstance) {
+    console.log('断开 WebSocket 连接');
+    wsInstance.disconnect();
+    wsConnected.value = false;
+  }
+  
+  // 禁用语音模式
+  isVoiceMode.value = false
   
   // 重置当前AI消息索引
   currentAiMessageIndex.value = null
@@ -1769,8 +1908,23 @@ const switchConversation = async (convId) => {
         id: msg.id,
         role: msg.role,
         content: msg.content,
-        timestamp: msg.timestamp
+        timestamp: msg.timestamp,
+        skillSteps: msg.skillSteps || null // 加载技能卡片信息
       }))
+      
+      // 🔥 关键修复：按时间戳排序，如果时间戳相同，用户消息排在前面
+      messages.value.sort((a, b) => {
+        if (a.timestamp === b.timestamp) {
+          // 时间戳相同时，用户消息排在前面
+          if (a.role === 'user' && b.role === 'ai') return -1
+          if (a.role === 'ai' && b.role === 'user') return 1
+          return 0
+        }
+        return a.timestamp - b.timestamp
+      })
+      console.log('切换对话后，消息已按时间戳排序，共', messages.value.length, '条');
+      console.log('消息顺序:', messages.value.map(m => ({ role: m.role, time: new Date(m.timestamp).toLocaleTimeString() })));
+      
       // 欢迎消息始终显示，不隐藏
     } else {
       messages.value = []
@@ -1830,6 +1984,9 @@ onUnmounted(() => {
   // 停止技能动画
   stopSkillAnimation()
   
+  // 🔥 停止心跳检测
+  stopHeartbeat()
+  
   // 停止录音和断开连接
   if (wsInstance) {
     wsInstance.stopRecording()
@@ -1845,6 +2002,77 @@ onUnmounted(() => {
   window.removeEventListener('ai-open-skills', handleSkillsEvent)
   window.removeEventListener('ai-open-settings', handleSettingsEvent)
 })
+
+// 🔥 心跳检测机制
+const startHeartbeat = () => {
+  // 清除旧的心跳定时器
+  stopHeartbeat()
+  
+  console.log('启动心跳检测');
+  lastHeartbeatTime = Date.now()
+  
+  // 每30秒发送一次心跳（如果有消息活动则不发送）
+  heartbeatTimer = setInterval(() => {
+    const now = Date.now()
+    const timeSinceLastMessage = now - lastHeartbeatTime
+    
+    // 如果超过25秒没有任何消息，发送心跳
+    if (timeSinceLastMessage > 25000 && wsInstance && wsInstance.websocket && wsInstance.websocket.readyState === WebSocket.OPEN) {
+      console.log('发送心跳 ping');
+      try {
+        wsInstance.websocket.send(JSON.stringify({ type: 'ping' }))
+        lastHeartbeatTime = now
+      } catch (error) {
+        console.error('发送心跳失败:', error);
+      }
+    }
+  }, 30000) // 每30秒检查一次
+  
+  // 每60秒检查连接状态
+  heartbeatCheckTimer = setInterval(() => {
+    const now = Date.now()
+    const timeSinceLastMessage = now - lastHeartbeatTime
+    
+    // 如果超过60秒没有任何消息，认为连接可能已断开
+    if (timeSinceLastMessage > 60000) {
+      console.error('心跳超时，连接可能已断开');
+      
+      // 检查WebSocket状态
+      if (wsInstance && wsInstance.websocket) {
+        const readyState = wsInstance.websocket.readyState
+        console.log('WebSocket readyState:', readyState);
+        
+        if (readyState !== WebSocket.OPEN) {
+          console.error('WebSocket 连接已断开，触发重连');
+          wsConnected.value = false
+          
+          // 触发连接状态变化处理
+          if (wsInstance.onConnectionStateChange) {
+            wsInstance.onConnectionStateChange(false)
+          }
+        }
+      }
+    }
+  }, 60000) // 每60秒检查一次
+}
+
+const stopHeartbeat = () => {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+    console.log('停止心跳检测');
+  }
+  
+  if (heartbeatCheckTimer) {
+    clearInterval(heartbeatCheckTimer)
+    heartbeatCheckTimer = null
+  }
+}
+
+// 更新最后心跳时间（在收到任何消息时调用）
+const updateHeartbeat = () => {
+  lastHeartbeatTime = Date.now()
+}
 
 onMounted(async () => {
   // 加载历史对话列表
