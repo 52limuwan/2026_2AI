@@ -198,8 +198,11 @@
           
           <div class="caller-info">
             <h2 class="caller-name">膳食伙伴</h2>
-            <p class="call-status" :class="{ 'calling': callStatus === 'calling', 'connected': callStatus === 'connected' }">
+            <p class="call-status" :class="{ 'calling': callStatus === 'calling', 'connected': callStatus === 'connected', 'thinking': isThinking }">
               {{ callStatusText }}
+            </p>
+            <p v-if="callStatus === 'connected' && callDuration > 0" class="call-duration">
+              {{ formattedCallDuration }}
             </p>
           </div>
           
@@ -239,7 +242,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, computed, onUnmounted } from 'vue'
+import { ref, onMounted, nextTick, computed, onUnmounted, watch } from 'vue'
 import { marked } from 'marked'
 import { sendXiaozhiMessage, getChatMessages, getConversations, createNewConversation, saveWebSocketMessage } from '../../api/ai'
 import { useUserStore } from '../../stores/user'
@@ -504,6 +507,9 @@ const maskScale = ref(0)
 const callStatus = ref('calling') // 'calling' | 'connected' | 'ended'
 const voiceTranscript = ref([]) // 语音转文字记录
 let callStatusTimer = null
+const callDuration = ref(0) // 通话时长（秒）
+let callDurationTimer = null
+const thinkingComplete = ref(false) // 思考完毕标志
 
 // 欢迎消息（特殊的，不会保存到数据库）
 const welcomeMessage = computed(() => {
@@ -714,11 +720,17 @@ const handleWebSocketMessage = (message) => {
       console.log('AI 开始回复 (TTS)')
       // 重置当前 AI 消息索引，准备接收新的片段
       currentAiMessageIndex.value = null
-      isThinking.value = false
+      // 注意：这里不关闭 isThinking，等到真正有文本输出时再关闭
       
     } else if (message.state === 'sentence_start' && message.text) {
       // 收到文本片段 - 这是真正的AI回复内容
       console.log('TTS 文本片段:', message.text)
+      
+      // 第一次收到文本时，标记思考完毕
+      if (isThinking.value) {
+        isThinking.value = false
+        thinkingComplete.value = true
+      }
       
       // 添加到语音转文字记录 - 每个片段单独显示
       if (message.text && message.text.trim()) {
@@ -1379,16 +1391,37 @@ const maskStyle = computed(() => {
 
 // 计算通话状态文本
 const callStatusText = computed(() => {
-  switch (callStatus.value) {
-    case 'calling':
-      return '正在接通...'
-    case 'connected':
+  if (callStatus.value === 'calling') {
+    return '正在接通...'
+  } else if (callStatus.value === 'ended') {
+    return '通话结束'
+  } else if (callStatus.value === 'connected') {
+    // 通话中的状态判断
+    if (isThinking.value) {
+      return '思考中...'
+    } else if (thinkingComplete.value) {
+      return '思考完毕'
+    } else {
       return '通话中'
-    case 'ended':
-      return '通话结束'
-    default:
-      return '通话中'
+    }
   }
+  return '通话中'
+})
+
+// 监听思考完毕状态，1秒后自动切换
+watch(thinkingComplete, (newVal) => {
+  if (newVal) {
+    setTimeout(() => {
+      thinkingComplete.value = false
+    }, 1000)
+  }
+})
+
+// 格式化通话时长
+const formattedCallDuration = computed(() => {
+  const minutes = Math.floor(callDuration.value / 60)
+  const seconds = callDuration.value % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 })
 
 // 处理电话呼叫
@@ -1487,6 +1520,11 @@ const handlePhoneCall = async (event) => {
           if (success) {
             // 更新状态为已连接
             callStatus.value = 'connected'
+            // 开始计时
+            callDuration.value = 0
+            callDurationTimer = setInterval(() => {
+              callDuration.value++
+            }, 1000)
           } else {
             throw new Error('启动录音失败')
           }
@@ -1534,6 +1572,12 @@ const handleClosePhoneCall = () => {
     callStatusTimer = null
   }
   
+  // 清理通话计时器
+  if (callDurationTimer) {
+    clearInterval(callDurationTimer)
+    callDurationTimer = null
+  }
+  
   if (streamingTimer.value) {
     clearInterval(streamingTimer.value)
     streamingTimer.value = null
@@ -1578,6 +1622,13 @@ const handleClosePhoneCall = () => {
   pendingText.value = ''
   isTtsComplete.value = false
   
+  // 重置思考状态
+  isThinking.value = false
+  thinkingComplete.value = false
+  
+  // 重置通话时长
+  callDuration.value = 0
+  
   // 清空语音转文字记录（通话界面的临时显示）
   voiceTranscript.value = []
   
@@ -1618,6 +1669,12 @@ const handleHangup = () => {
   if (callStatusTimer) {
     clearInterval(callStatusTimer)
     callStatusTimer = null
+  }
+  
+  // 停止通话计时器
+  if (callDurationTimer) {
+    clearInterval(callDurationTimer)
+    callDurationTimer = null
   }
   
   callStatus.value = 'ended'
@@ -2961,6 +3018,18 @@ onMounted(async () => {
 .call-status.connected::before {
   background: #22c55e;
   animation: none;
+}
+
+.call-status.thinking::before {
+  background: #f59e0b;
+  animation: blink 1.5s ease-in-out infinite;
+}
+
+.call-duration {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 4px 0 0 0;
+  font-family: 'Courier New', monospace;
 }
 
 @keyframes blink {
