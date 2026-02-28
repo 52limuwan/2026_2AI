@@ -68,10 +68,7 @@ const isAIPage = computed(() => route.path === '/client/ai')
 const headerTitle = computed(() => (isTabPage.value ? '康小伴' : route.meta?.title || '返回'))
 const headerSubtitle = computed(() => {
   if (!isTabPage.value) return ''
-  if (selectedStore.value) {
-    return selectedStore.value.location || selectedStore.value.name || '选择店面'
-  }
-  return '选择店面'
+  return '你的全能陪伴伙伴'
 })
 const hasUnread = computed(() => notificationStore.hasUnread)
 

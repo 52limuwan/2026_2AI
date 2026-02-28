@@ -10,7 +10,7 @@
       </div>
       <div class="greet" v-else>
         <div class="brand-title">{{ title }}</div>
-        <div class="loc-text" @click="$emit('location')">{{ subtitle || '选择位置' }}</div>
+        <div class="loc-text">{{ subtitle || '你的全能陪伴伙伴' }}</div>
       </div>
       <div class="right">
         <slot />
