@@ -12,6 +12,7 @@ class TabletOS {
         this.audioUnlocked = false;
         this.ringtoneAudio = null;
         this.alarmAudio = null;
+        this.ttsAudio = null; // 添加TTS音频引用
         
         // 从localStorage读取服务器配置，默认为localhost
         this.serverHost = localStorage.getItem('serverHost') || 'localhost';
@@ -70,11 +71,17 @@ class TabletOS {
         if (this.ringtoneAudio) {
             this.ringtoneAudio.preload = 'auto';
             this.ringtoneAudio.load();
+            console.log('✓ 来电铃声元素已找到:', this.ringtoneAudio.src);
+        } else {
+            console.error('✗ 来电铃声元素未找到');
         }
         
         if (this.alarmAudio) {
             this.alarmAudio.preload = 'auto';
             this.alarmAudio.load();
+            console.log('✓ 警报音频元素已找到:', this.alarmAudio.src);
+        } else {
+            console.error('✗ 警报音频元素未找到');
         }
         
         console.log('✓ 音频元素已初始化');
@@ -604,9 +611,6 @@ class TabletOS {
         console.log('开始播放警报序列');
         
         try {
-            // 固定的TTS文案
-            const ttsMessage = '紧急警报，您的家属李阿姨在卫生间跌倒，检测到心率过缓，呼吸节律异常，护工已就位实施救护，请您尽快赶到现场。';
-            
             // 重复3次
             for (let i = 0; i < 3; i++) {
                 if (!this.isCallActive) break; // 用户挂断则停止
@@ -619,9 +623,9 @@ class TabletOS {
                 
                 if (!this.isCallActive) break;
                 
-                // 步骤2: 播放TTS
+                // 步骤2: 播放预录制的TTS音频
                 console.log('播放TTS语音...');
-                await this.playWebSpeechTTS(ttsMessage);
+                await this.playTTSAudio();
                 
                 if (!this.isCallActive) break;
                 
@@ -689,37 +693,38 @@ class TabletOS {
         });
     }
     
-    playWebSpeechTTS(message) {
+    playTTSAudio() {
         return new Promise((resolve) => {
             if (!this.isCallActive) {
                 resolve();
                 return;
             }
             
-            if (!('speechSynthesis' in window)) {
-                console.warn('浏览器不支持 Web Speech API');
-                resolve();
-                return;
+            // 停止之前的TTS音频（如果有）
+            if (this.ttsAudio) {
+                this.ttsAudio.pause();
+                this.ttsAudio.currentTime = 0;
             }
             
-            const utterance = new SpeechSynthesisUtterance(message);
-            utterance.lang = 'zh-CN';
-            utterance.rate = 1.0;
-            utterance.pitch = 1.0;
-            utterance.volume = 1.0;
+            // 创建音频元素播放预录制的TTS
+            this.ttsAudio = new Audio('ttsmaker-file-2026-3-1-19-3-53.mp3');
             
-            utterance.onend = () => {
+            this.ttsAudio.onended = () => {
                 console.log('✓ TTS播放完成');
                 resolve();
             };
             
-            utterance.onerror = (err) => {
+            this.ttsAudio.onerror = (err) => {
                 console.error('✗ TTS播放失败:', err);
                 resolve(); // 即使失败也继续
             };
             
-            window.speechSynthesis.speak(utterance);
-            console.log('✓ TTS播放中');
+            this.ttsAudio.play().then(() => {
+                console.log('✓ TTS播放中');
+            }).catch(err => {
+                console.error('✗ TTS播放失败:', err);
+                resolve();
+            });
         });
     }
     
@@ -767,6 +772,8 @@ class TabletOS {
             return;
         }
         
+        console.log('准备播放来电铃声...');
+        
         // 确保音频已重置
         this.ringtoneAudio.pause();
         this.ringtoneAudio.currentTime = 0;
@@ -780,11 +787,11 @@ class TabletOS {
                 console.log('✓ 来电铃声播放中');
             }).catch(err => {
                 console.error('✗ 来电铃声播放失败:', err);
+                console.error('错误详情:', err.message);
                 
                 // 如果音频未解锁，尝试再次解锁
                 if (!this.audioUnlocked) {
-                    console.log('尝试解锁音频...');
-                    this.unlockAudio();
+                    console.log('音频可能未解锁，请点击页面任意位置解锁音频');
                 }
             });
         }
@@ -815,12 +822,14 @@ class TabletOS {
             }
         }
         
-        // 停止 Web Speech TTS
-        if ('speechSynthesis' in window) {
+        // 停止TTS音频
+        if (this.ttsAudio) {
             try {
-                window.speechSynthesis.cancel();
+                this.ttsAudio.pause();
+                this.ttsAudio.currentTime = 0;
+                this.ttsAudio = null;
             } catch (err) {
-                console.error('停止TTS失败:', err);
+                console.error('停止TTS音频失败:', err);
             }
         }
         
