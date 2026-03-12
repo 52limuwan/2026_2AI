@@ -8,6 +8,7 @@ import sys
 import json
 import os
 import io
+import time
 
 # 设置标准输出为UTF-8编码
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -47,6 +48,10 @@ def print_order(order_data):
         print(f"找到图片: {a1_path}")
         print(f"找到图片: {a2_path}")
         
+        # 关键修复：打印前先让打印机定位到起始位置
+        printer.tsc.sendcommand('HOME')
+        time.sleep(0.3)  # 等待定位完成
+        
         # 打印第一张：a1.png
         print("打印 a1.png...")
         label1 = LabelData(width=50, height=50, gap=2, density=8, copies=1)
@@ -64,6 +69,9 @@ def print_order(order_data):
             print("ERROR: a1.png 打印失败", file=sys.stderr)
         else:
             print("SUCCESS: a1.png 打印成功")
+        
+        # 关键修复：等待第一张打印完成
+        time.sleep(1.5)  # 给打印机足够时间完成打印和走纸
         
         # 打印第二张：a2.png
         print("打印 a2.png...")

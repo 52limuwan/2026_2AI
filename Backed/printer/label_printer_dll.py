@@ -103,6 +103,10 @@ class LabelPrinterDLL:
                 offset=0
             )
             
+            # 关键修复：确保标签定位到起始位置
+            # 这会让打印机走纸到下一个标签的起始位置
+            self.tsc.sendcommand('HOME')
+            
             # 打印文本
             for text in label_data.texts:
                 self.tsc.printerfont(

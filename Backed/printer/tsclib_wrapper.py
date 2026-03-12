@@ -120,3 +120,13 @@ class TSCLib:
             self.dll.formfeed()
         except:
             pass
+    
+    def windowsdriver(self, width, height):
+        """设置 Windows 驱动模式"""
+        try:
+            self.dll.windowsdriver(
+                self._encode(str(width)),
+                self._encode(str(height))
+            )
+        except:
+            pass
